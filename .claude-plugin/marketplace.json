@@ -1,0 +1,5 @@
+{
+  "name": "shipcrew",
+  "owner": { "name": "Yoann" },
+  "plugins": [{ "name": "shipcrew", "source": "./", "description": "PRD in, live demo URL out." }]
+}

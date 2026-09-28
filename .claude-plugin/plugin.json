@@ -1,0 +1,7 @@
+{
+  "name": "shipcrew",
+  "version": "0.1.0",
+  "description": "PRD in, live demo URL out. A CrewAI flow that drives headless Claude Code sessions: plan, design lock, scaffold (gh + Vercel + Neon), build, QA, security, deploy.",
+  "author": { "name": "Yoann", "email": "yoann@tamebi.ai" },
+  "keywords": ["crewai", "prd", "autonomous", "vercel", "swe"]
+}

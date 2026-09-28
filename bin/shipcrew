@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Plugin bin/ is on PATH inside Claude Code; the crew lives in a uv project next to it.
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+exec uv run --quiet --project "$ROOT/crew" shipcrew "$@"

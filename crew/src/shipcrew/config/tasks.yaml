@@ -1,0 +1,26 @@
+backlog_task:
+  agent: product_manager
+  description: |
+    PRD:
+    ---
+    {prd}
+    ---
+    Produce the backlog: 3 to 12 features, ordered by dependency then demo value.
+    Feature F01 is always "App shell + design tokens + deploy pipeline green".
+    Each feature gets 2-5 acceptance criteria phrased as observable browser behaviour
+    ("visiting /x shows ...", "submitting ... persists and appears after reload").
+    Respect the PRD's non-goals; drop anything not needed for the demo script.
+  expected_output: A numbered feature list (id F01.., title, acceptance criteria).
+
+architecture_task:
+  agent: architect
+  context: [backlog_task]
+  description: |
+    PRD:
+    ---
+    {prd}
+    ---
+    Given the backlog, decide the stack (one line), whether a Postgres database is needed,
+    and the data model (tables, key columns, relations; empty if no DB). Keep the backlog
+    as is unless a feature is technically impossible in a day — then split or cut it.
+  expected_output: The final backlog with stack, needs_db, data_model and features.
