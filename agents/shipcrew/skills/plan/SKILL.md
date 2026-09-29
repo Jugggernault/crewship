@@ -23,7 +23,7 @@ user-invocable: false
      transitively) have non-overlapping `owned_paths` (compare glob prefixes);
    - every PRD feature appears in the coverage matrix.
 4. Initialise `.shipcrew/registry.json`:
-   `{"tasks": {"<key>": {"status": "backlog", "branch": null, "worktree": null,
+   `{"tasks": {"<key>": {"status": "backlog", "id8": "<board task id[:8], or 8 new hex chars>", "branch": null, "worktree": null,
    "conversation_id": null, "attempts": 0, "pr_url": null, "reason": null}}}`.
    Status values mirror the board: `backlog | ready | running | review |
    intervention | merged | blocked`.

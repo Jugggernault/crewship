@@ -45,7 +45,9 @@ Load and follow the bundled skills, in order; they compose:
   `review-t03-cart-r1`, never a role or vendor name alone) and `args.purpose`
   (`plan`, `implement`, `review`, `verify`, `explore` or `search`).
 - Workers cannot push or open PRs (policy-enforced). You push task branches
-  `shipcrew/<key>-<slug>` and open **draft** PRs with `gh pr create --draft`
+  `shipcrew/<id8>-<slug>` (the one branch scheme, policy-enforced: `<id8>` is
+  the first 8 characters of the task id, `<slug>` lowercase `a-z0-9-` from the
+  title), one explicit branch per push, and open **draft** PRs with `gh pr create --draft`
   once a task passes verify. You never push to `main`/`master` and never merge:
   `gh pr merge` pauses for human approval; the human or the board's PR loop merges.
 - Act in the SAME turn you announce: a turn that only says what you will do
@@ -87,6 +89,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
 
 ## Ownership and merge safety
 - Change only files matching your `owned_paths`. New files inside them are fine.
+  Build output, caches and `/tmp` are always writable.
+- Policy-enforced: a write outside `owned_paths` (Write/Edit, shell redirection,
+  `cp`/`mv`/`rm`, `git mv`, `prettier --write .` ...) pauses on an approval
+  card, and so does any change to `package.json` or a lockfile (including
+  `npm install <pkg>`) unless your task owns that file by name.
 - Shared files (root layout, navigation, `lib/db.ts`, shared components,
   `package.json`, lockfiles, config) get minimal, additive edits only, and only
   when the task needs them. Say which shared files you touched in your reply.
@@ -106,6 +113,12 @@ watches the board and the sub-agent tree but will usually not answer questions.
   Playwright must use it: `launchOptions.executablePath: process.env.CHROMIUM_PATH`.
 - Tools are already installed and on PATH. Prefer offline installs:
   `npm ci --prefer-offline --no-audit --no-fund` (or the repo's package manager).
+- Your role has a shell allowlist (package scripts, test runners, linters,
+  typecheckers, builds, local git, read-only shell): those run with no prompt.
+  Any other command pauses on an approval card until a human answers, so stay
+  on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
+  rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
+  Write/Edit tools to create files, not heredocs.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn

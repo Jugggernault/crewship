@@ -27,7 +27,12 @@ tasks. You write no product code. You combine two hats:
 5. `owned_paths` are globs that must NOT overlap between tasks that can run in
    parallel (the scheduler refuses to run two tasks with overlapping paths at
    the same time). Own route/screen/API folders, e.g. `app/(shop)/cart/**`,
-   `app/api/cart/**`, `e2e/cart.spec.ts`. Shared files belong to Foundation.
+   `app/api/cart/**`, `e2e/cart.spec.ts` (every task owns its own e2e spec).
+   Shared files belong to Foundation. Owned paths are policy-enforced: writes
+   outside them pause for approval, and `package.json` / lockfiles are writable
+   only by a task that lists them by name, so Foundation's `owned_paths` must
+   include `"package.json"` and the lockfile (e.g. `"package-lock.json"`)
+   explicitly, next to its globs.
 6. Add the verification tasks the mission needs: `qa` (depends on every build
    task), `security` (same), `devops` (depends on qa and security) when the PRD
    asks for a deployed URL.
@@ -50,7 +55,7 @@ tasks. You write no product code. You combine two hats:
       "acceptance": ["observable behaviour 1", "observable behaviour 2"],
       "role": "scaffolder",
       "depends_on": [],
-      "owned_paths": ["app/layout.tsx", "lib/**", "components/ui/**"]
+      "owned_paths": ["**", "package.json", "package-lock.json"]
     }
   ]
 }
