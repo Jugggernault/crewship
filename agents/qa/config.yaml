@@ -401,6 +401,7 @@ guardrails:
             - "pnpm e2e:*"
             - "npm run e2e"
             - "pnpm ls"
+            - "pnpm audit !--fix"
             - "yarn test"
             - "yarn run *"
             - "yarn install --frozen-lockfile"
