@@ -80,7 +80,7 @@ native Claude tool calls through the PreToolUse hook), not only in the prompt:
 | `blast_radius` (`gate_pushes: false`) | polly's catastrophic DENY set: force-push, `rm -rf /` or a system dir, hard reset to a remote ref |
 | `shipcrew_no_remote_writes` (workers) | DENY `git push`, `gh pr create/merge/close/reopen/ready`, `gh release create`, `gh repo create/delete/fork`, `gh api -X POST/PUT/PATCH/DELETE`. The orchestrator pushes. |
 | `shipcrew_no_env_read` | DENY reading `.env`, `.env.local`, `.env.*` through Read/Grep/`sys_os_read` or the shell (`.env.example`, `.sample`, `.template` allowed; `vercel env pull` is not denied here, the shell allowlists ask for it) |
-| `shipcrew_workflows_approval` | ASK before any write to `.github/workflows/**` (an approval card in the Inbox; waits up to 24 h). Read-only shell passes. |
+| `shipcrew_workflows_approval` | ASK before any write to `.github/workflows/**` (an approval card in the Inbox; waits up to 24 h): write tools, shell write targets, or a non-reader command naming a workflow path (`omnigent.shipcrew.policies.workflows_guard`). Reads pass, also chained with other commands. |
 | `shipcrew_no_browser_download` | DENY `playwright install` (and `install-deps`, puppeteer browser downloads). Use `$CHROMIUM_PATH`. |
 
 A denied call is final. The rules explain why, so the agent doesn't retry.
@@ -328,7 +328,7 @@ For each bundle, the validator does the following:
   - the MCP set per role (`MCP_SERVERS`): `strict_mcp_config` on, exactly the
     expected servers, `allowed_tools`' `mcp__*` entries match, and the derived
     launch args (claude-native) or spawn env (claude-sdk) carry the strict flag;
-- builds every guardrail through omnigent's factory path and runs 124
+- builds every guardrail through omnigent's factory path and runs 126
   tool-call cases per bundle (plus the dispatch cap), expecting a specific
   ALLOW, ASK or DENY for each. The cases cover:
   - allowlisted commands (ALLOW, no prompt);

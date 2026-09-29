@@ -97,40 +97,19 @@ guardrails:
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
     # CI definitions are the merge gate: changing them needs a human (approval card
-    # in the Inbox). Read-only shell (cat, ls, grep, git diff ..., also chained with
-    # ; && || | and 2>/dev/null) passes; substitutions ($(..), `..`), newlines and
-    # in-place writers (yq -i, git diff --output) do not.
+    # in the Inbox). Any write to .github/workflows/** asks: write tools, and shell
+    # write targets (redirections, cp/mv/tee, sed -i, git checkout <path> ...) or a
+    # command naming a workflow path that is not a known reader (yq -i, git diff
+    # --output, scripts). Reads pass, also inside a chain with other commands
+    # (`git checkout x -- a.js && ls .github/workflows` no longer asks); a command
+    # naming workflows that cannot be analyzed ($(..), backticks, heredocs) asks.
     shipcrew_workflows_approval:
       type: function
       on: [tool_call]
       function:
-        path: omnigent.policies.builtins.cel.cel_policy
+        path: omnigent.shipcrew.policies.workflows_guard
         arguments:
           reason: Editing .github/workflows/** needs human approval.
-          expression: |
-            event.type == "tool_call"
-            && (
-              (
-                event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
-                && (
-                  (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.github/workflows/'))
-                  || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.github/workflows/'))
-                  || (has(event.data.arguments.notebook_path) && event.data.arguments.notebook_path.matches(r'(^|/)\.github/workflows/'))
-                )
-              )
-              || (
-                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
-                && has(event.data.arguments.command)
-                && event.data.arguments.command.matches(r'\.github/workflows')
-                && (
-                  !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>`$\n\r]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
-                  || event.data.arguments.command.matches(r'\byq\b[^;&|]*\s(-i\S*|--inplace)(\s|=|$)')
-                  || event.data.arguments.command.matches(r'\bgit\s+(diff|log|show)\b[^;&|]*\s--output\b')
-                )
-              )
-            )
-            ? {"result": "ASK"}
-            : {"result": "ALLOW"}
     # A browser is preinstalled at $CHROMIUM_PATH; browser downloads are never needed.
     shipcrew_no_browser_download:
       type: function

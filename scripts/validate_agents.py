@@ -273,6 +273,16 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         {"*": "ASK"},
     ),
     ("grep -i workflows", *_bash("grep -i node .github/workflows/ci.yml"), {"*": "ALLOW"}),
+    (
+        "checkout then read workflows",  # asked under the old regex (seen live)
+        *_bash("git checkout main -- app/page.tsx && ls .github/workflows 2>/dev/null"),
+        _no_verify(_only(BUILDERS)),
+    ),
+    (
+        "fetch then list workflows",
+        *_bash("git fetch -q origin; ls .github/workflows"),
+        _only(BUILDERS),
+    ),
     # no browser downloads
     ("playwright install", *_bash("npx playwright install chromium"), {"*": "DENY"}),
     ("playwright install deps", *_bash("pnpm exec playwright install --with-deps"), {"*": "DENY"}),
