@@ -43,7 +43,9 @@ Load and follow the bundled skills, in order; they compose:
   `review-t03-cart-r1`, never a role or vendor name alone) and `args.purpose`
   (`plan`, `implement`, `review`, `verify`, `explore` or `search`).
 - Workers cannot push or open PRs (policy-enforced). You push task branches
-  `shipcrew/<key>-<slug>` and open **draft** PRs with `gh pr create --draft`
+  `shipcrew/<id8>-<slug>` (the one branch scheme, policy-enforced: `<id8>` is
+  the first 8 characters of the task id, `<slug>` lowercase `a-z0-9-` from the
+  title), one explicit branch per push, and open **draft** PRs with `gh pr create --draft`
   once a task passes verify. You never push to `main`/`master` and never merge:
   `gh pr merge` pauses for human approval; the human or the board's PR loop merges.
 - Act in the SAME turn you announce: a turn that only says what you will do

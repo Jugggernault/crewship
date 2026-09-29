@@ -1,0 +1,9 @@
+# File operations; shipcrew_owned_paths decides whether each target is allowed.
+- "mkdir"
+- "touch"
+- "cp"
+- "mv"
+- "rm"
+- "rmdir"
+- "chmod"
+- "tee"

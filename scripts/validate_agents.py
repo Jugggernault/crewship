@@ -14,12 +14,17 @@ For each ``agents/<bundle>/`` it checks:
    extraction + registered-handler allowlist), as ``omnigent server --agent``
    does;
 4. shipcrew conventions: instructions came from the generated AGENTS.md (not a
-   literal file name), harness per role, ``permission_mode: auto``, bundled
-   skills, the orchestrator's ``tools.agents`` = the roles;
+   literal file name), harness per role, the permission setup (claude-native:
+   ``permission_mode: default`` + ``allowed_tools`` turned into
+   ``--allowedTools`` by omnigent's launch-arg derivation; claude-sdk:
+   ``auto``; never bypassPermissions), bundled skills, the orchestrator's
+   ``tools.agents`` = the roles;
 5. the guardrails behave: every function policy is resolved and built through
    omnigent's factory path, then run on a matrix of tool calls (git push,
-   gh pr create, .env reads, workflow edits, playwright install, rm -rf /, ...)
-   with the expected ALLOW / ASK / DENY per bundle.
+   gh pr create, .env reads, workflow edits, playwright install, rm -rf /,
+   allowlisted and non-allowlisted shell, writes in and out of the task's
+   owned paths, ...) with the expected ALLOW / ASK / DENY per bundle. Worker
+   bundles get the task contract injected exactly as the board does.
 
 Exits non-zero on the first failing bundle report.
 """
@@ -63,30 +68,66 @@ BUNDLED_SKILLS = {
 
 # ── Guardrail behaviour matrix ──────────────────────────────────────────────
 # (label, tool name, arguments, {profile: expected verdict}); "*" = every profile
-# not listed explicitly. Profiles: worker, reviewer, qa, devops, planner, orchestrator.
+# not listed explicitly. Profiles: builder (developer, designer, integrator),
+# scaffolder, security, qa, reviewer, devops, planner, orchestrator.
+#
+# Worker bundles are checked the way the board starts them: the task contract
+# (TASK_OWNED under REPO_PATH) is injected into the owned-paths policy with the
+# server's own omnigent.shipcrew.sessions.inject_task_contract.
 
 REPO_PATH = "/work/mission"
+TASK_OWNED = ["app/**", "e2e/cart.spec.ts"]
+BRANCH = "shipcrew/1a2b3c4d-cart"  # shipcrew/<first 8 chars of the task id>-<slug>
+
+BUILDERS = ("builder", "scaffolder", "security")  # owned paths + git/file writes
+RUNNERS = (*BUILDERS, "qa")  # run tests, linters, builds
+READERS = ("reviewer", "devops", "planner")  # read-only shell
 
 
 def _bash(cmd: str) -> tuple[str, dict[str, str]]:
     return "Bash", {"command": cmd}
 
 
+def _only(profiles: tuple[str, ...], verdict: str = "ALLOW", *, other: str = "ASK") -> dict[str, str]:
+    """``verdict`` for *profiles* (and the orchestrator, which has no allowlist), ``other`` else."""
+    return {"*": other, "orchestrator": "ALLOW", **{p: verdict for p in profiles}}
+
+
+# A write tool: builders are judged by owned paths, the write-limited roles DENY.
+def _write_verdicts(builders: str, **overrides: str) -> dict[str, str]:
+    base = {"*": builders, "orchestrator": "ALLOW"}
+    base.update({p: "DENY" for p in ("reviewer", "qa", "devops", "planner")})
+    base.update(overrides)
+    return base
+
+
+COMMIT_HEREDOC = (
+    "git add -A && git commit -m \"$(cat <<'EOF'\nfeat(cart): add cart page\n\n"
+    "Co-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\""
+)
+
 CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
-    # publishing is the orchestrator's job
-    (
-        "git push",
-        *_bash("git push origin shipcrew/T02-cart"),
-        {"*": "DENY", "orchestrator": "ALLOW"},
-    ),
+    # publishing is the orchestrator's job, on the one branch scheme
+    ("git push", *_bash(f"git push origin {BRANCH}"), {"*": "DENY", "orchestrator": "ALLOW"}),
     (
         "git -C push",
-        *_bash("git -C .worktrees/T02 push -u origin shipcrew/T02-cart"),
+        *_bash(f"git -C .worktrees/T02 push -u origin {BRANCH}"),
         {"*": "DENY", "orchestrator": "ALLOW"},
     ),
+    ("push old key scheme", *_bash("git push origin shipcrew/T02-cart"), {"*": "DENY"}),
+    ("push uppercase slug", *_bash("git push origin shipcrew/1a2b3c4d-Cart"), {"*": "DENY"}),
+    ("push task/<id>", *_bash("git push origin task/1a2b3c4d"), {"*": "DENY"}),
     ("bare git push", *_bash("git push"), {"*": "DENY"}),
+    ("push remote only", *_bash("git push origin"), {"*": "DENY"}),
     ("push main", *_bash("git push origin main"), {"*": "DENY"}),
-    ("push HEAD:main", *_bash("git push origin shipcrew/T02:main"), {"*": "DENY"}),
+    ("push HEAD:main", *_bash(f"git push origin {BRANCH}:main"), {"*": "DENY"}),
+    ("push +refspec", *_bash(f"git push origin +{BRANCH}"), {"*": "DENY"}),
+    ("push --all", *_bash("git push --all origin"), {"*": "DENY"}),
+    (
+        "second push in a chain",
+        *_bash(f"git push origin {BRANCH} && git push origin feature"),
+        {"*": "DENY"},
+    ),
     ("chained push", *_bash("git add -A && git commit -m wip && git push"), {"*": "DENY"}),
     ("git push by path", *_bash("/usr/bin/git push origin main"), {"*": "DENY"}),
     (
@@ -97,7 +138,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("gh pr create", *_bash("gh pr create --fill"), {"*": "DENY", "orchestrator": "ALLOW"}),
     (
         "gh pr create draft",
-        *_bash("gh pr create --draft --fill --head shipcrew/T02-cart"),
+        *_bash(f"gh pr create --draft --fill --head {BRANCH}"),
         {"*": "DENY", "orchestrator": "ALLOW"},
     ),
     ("gh pr merge", *_bash("gh pr merge 12 --squash"), {"*": "DENY", "orchestrator": "ASK"}),
@@ -107,13 +148,18 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         {"*": "DENY", "orchestrator": "ALLOW"},
     ),
     ("gh pr view", *_bash("gh pr view 12 --json state"), {"*": "ALLOW"}),
-    ("commit msg says push", *_bash('git commit -m "push the button"'), {"*": "ALLOW"}),
-    ("local git", *_bash("git status && git diff origin/main...HEAD && npm test"), {"*": "ALLOW"}),
+    ("commit msg says push", *_bash('git commit -m "push the button"'), _only(BUILDERS)),
+    ("commit via heredoc", *_bash(COMMIT_HEREDOC), _only(BUILDERS)),
+    (
+        "local git + tests",
+        *_bash("git status && git diff origin/main...HEAD && npm test"),
+        _only(RUNNERS),
+    ),
     # polly's catastrophic set
     ("rm -rf /", *_bash("rm -rf /"), {"*": "DENY"}),
-    ("force push", *_bash("git push --force origin shipcrew/T02"), {"*": "DENY"}),
+    ("force push", *_bash(f"git push --force origin {BRANCH}"), {"*": "DENY"}),
     ("hard reset remote", *_bash("git reset --hard origin/main"), {"*": "DENY"}),
-    ("rm -rf build dirs", *_bash("rm -rf node_modules .next"), {"*": "ALLOW"}),
+    ("rm -rf build dirs", *_bash("rm -rf node_modules .next"), _only(BUILDERS)),
     # secrets
     ("Read .env", "Read", {"file_path": f"{REPO_PATH}/.env"}, {"*": "DENY"}),
     ("Read .env.local", "Read", {"file_path": f"{REPO_PATH}/.env.local"}, {"*": "DENY"}),
@@ -126,20 +172,21 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("Read .env.example", "Read", {"file_path": f"{REPO_PATH}/.env.example"}, {"*": "ALLOW"}),
     ("Read env.ts", "Read", {"file_path": f"{REPO_PATH}/lib/env.ts"}, {"*": "ALLOW"}),
     ("Read .envrc", "Read", {"file_path": f"{REPO_PATH}/.envrc"}, {"*": "ALLOW"}),
+    ("Read outside owned", "Read", {"file_path": f"{REPO_PATH}/lib/db.ts"}, {"*": "ALLOW"}),
     ("sys_os_read .env", "sys_os_read", {"path": ".env"}, {"*": "DENY"}),
     ("Grep .env", "Grep", {"pattern": "KEY", "path": ".env.local"}, {"*": "DENY"}),
     ("cat .env", *_bash("cat .env"), {"*": "DENY"}),
     ("grep .env.local", *_bash("grep DATABASE_URL .env.local"), {"*": "DENY"}),
     ("source ./.env", *_bash("source ./.env && npm run dev"), {"*": "DENY"}),
     ("cat .env.example", *_bash("cat .env.example"), {"*": "ALLOW"}),
-    ("vercel env pull", *_bash("vercel env pull .env.local --yes"), {"*": "ALLOW"}),
+    ("vercel env pull", *_bash("vercel env pull .env.local --yes"), _only(())),
     ("echo env var name", *_bash('echo "set DATABASE_URL in the environment"'), {"*": "ALLOW"}),
     # CI definitions need a human
     (
         "Write workflow",
         "Write",
         {"file_path": f"{REPO_PATH}/.github/workflows/ci.yml", "content": "x"},
-        {"*": "ASK", "reviewer": "DENY", "qa": "DENY", "devops": "DENY", "planner": "DENY"},
+        _write_verdicts("ASK", orchestrator="ASK"),
     ),
     (
         "Edit workflow",
@@ -149,7 +196,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
             "old_string": "a",
             "new_string": "b",
         },
-        {"*": "ASK", "reviewer": "DENY", "qa": "DENY", "devops": "DENY", "planner": "DENY"},
+        _write_verdicts("ASK", orchestrator="ASK"),
     ),
     ("sed -i workflow", *_bash("sed -i 's/npm/pnpm/' .github/workflows/ci.yml"), {"*": "ASK"}),
     ("cat workflow", *_bash("cat .github/workflows/ci.yml"), {"*": "ALLOW"}),
@@ -161,11 +208,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         ),
         {"*": "ALLOW"},
     ),
-    (
-        "redirect into workflow",
-        *_bash("cat ci.yml > .github/workflows/ci.yml"),
-        {"*": "ASK"},
-    ),
+    ("redirect into workflow", *_bash("cat ci.yml > .github/workflows/ci.yml"), {"*": "ASK"}),
     (
         "read then write workflow",
         *_bash("ls .github/workflows && sed -i 's/a/b/' .github/workflows/ci.yml"),
@@ -201,33 +244,114 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     (
         "playwright test",
         *_bash("CHROMIUM_PATH=/usr/bin/chromium npx playwright test"),
+        _only(RUNNERS),
+    ),
+    # shell allowlists: allowlisted commands run with no prompt, the rest ASK
+    ("npm test", *_bash("npm test"), _only(RUNNERS)),
+    ("npm test piped", *_bash("npm test 2>&1 | tail -40"), _only(RUNNERS)),
+    ("npm ci", *_bash("npm ci --prefer-offline --no-audit --no-fund"), _only(RUNNERS)),
+    ("vitest", *_bash("npx vitest run src/cart.test.ts"), _only(RUNNERS)),
+    ("pytest", *_bash("uv run pytest -q tests/"), _only(RUNNERS)),
+    (
+        "lint typecheck build",
+        *_bash("npm run lint && npm run typecheck && npm run build"),
+        _only(RUNNERS),
+    ),
+    ("timeout wrapper", *_bash("timeout 300 npm test"), _only(RUNNERS)),
+    ("design lint", *_bash("npx -y @google/design.md lint DESIGN.md"), _only(RUNNERS)),
+    ("git read chain", *_bash("git --no-pager log --oneline -5 && git diff --stat"), {"*": "ALLOW"}),
+    (
+        "read-only shell",
+        *_bash("ls -la app && rg -n TODO app | head -20 && wc -l README.md"),
         {"*": "ALLOW"},
     ),
-    # writes by profile
+    ("sed -n print", *_bash("sed -n '1,40p' app/page.tsx"), {"*": "ALLOW"}),
+    ("sed -n w", *_bash("sed -n '1w /tmp/x' app/page.tsx"), _only(())),
+    ("find -exec", *_bash("find . -name '*.ts' -exec wc -l {} +"), _only(())),
+    ("git stash push -m", *_bash("git stash push -m wip"), _only(BUILDERS)),
+    ("git branch -D", *_bash("git branch -D feature"), _only(())),
+    ("git reset --hard local", *_bash("git reset --hard HEAD~1"), _only(())),
+    ("python -c", *_bash('python3 -c "import os; print(os.listdir())"'), _only(())),
+    ("bash -c", *_bash('bash -c "npm test"'), _only(())),
+    ("unknown env prefix", *_bash("NODE_OPTIONS=--require=/tmp/x.js npm test"), _only(())),
+    ("curl external", *_bash("curl -s https://example.com"), _only(())),
+    (
+        "curl localhost",
+        *_bash("curl -s -X POST -H 'content-type: application/json' http://localhost:3000/api/cart"),
+        _only(("security", "qa")),
+    ),
+    ("curl localhost -o", *_bash("curl -so /tmp/x http://127.0.0.1:3000"), _only(())),
+    ("init.sh", *_bash("./init.sh"), _only(("security", "qa"))),
+    ("npm install pkg", *_bash("npm install lodash"), _only(())),
+    ("create-next-app", *_bash("npx create-next-app@latest . --ts --yes"), _only(("scaffolder",))),
+    ("vercel ls", *_bash("vercel ls --prod"), _only(("devops",))),
+    ("vercel inspect", *_bash("vercel inspect https://x.vercel.app --wait"), _only(("devops",))),
+    ("vercel deploy", *_bash("vercel deploy --prod"), _only(())),
+    ("prettier --write .", *_bash("npx prettier --write ."), _only(())),
+    ("prettier --write owned", *_bash("npx prettier --write app/cart"), _only(BUILDERS)),
+    # owned paths (task owns app/** and e2e/cart.spec.ts)
     (
         "Write source",
         "Write",
         {"file_path": f"{REPO_PATH}/app/page.tsx", "content": "x"},
-        {"*": "ALLOW", "reviewer": "DENY", "qa": "DENY", "devops": "DENY", "planner": "DENY"},
+        _write_verdicts("ALLOW"),
+    ),
+    (
+        "Write owned by name",
+        "Write",
+        {"file_path": f"{REPO_PATH}/e2e/cart.spec.ts", "content": "x"},
+        _write_verdicts("ALLOW"),
+    ),
+    (
+        "Write outside owned",
+        "Write",
+        {"file_path": f"{REPO_PATH}/lib/db.ts", "content": "x"},
+        _write_verdicts("ASK"),
+    ),
+    (
+        "Edit package.json",
+        "Edit",
+        {"file_path": f"{REPO_PATH}/package.json", "old_string": "a", "new_string": "b"},
+        _write_verdicts("ASK"),
+    ),
+    (
+        "Write outside worktree",
+        "Write",
+        {"file_path": "/home/user/.bashrc", "content": "x"},
+        _write_verdicts("ASK"),
+    ),
+    (
+        "Write screenshot to /tmp",
+        "Write",
+        {"file_path": "/tmp/shot.png", "content": "x"},
+        _write_verdicts("ALLOW"),
     ),
     (
         "Write qa.json",
         "Write",
         {"file_path": f"{REPO_PATH}/.shipcrew/qa.json", "content": "{}"},
-        {"*": "ALLOW", "reviewer": "DENY", "devops": "DENY", "planner": "DENY"},
+        _write_verdicts("ASK", qa="ALLOW"),
     ),
     (
         "Write deploy.json",
         "Write",
         {"file_path": f"{REPO_PATH}/.shipcrew/deploy.json", "content": "{}"},
-        {"*": "ALLOW", "reviewer": "DENY", "qa": "DENY", "planner": "DENY"},
+        _write_verdicts("ASK", devops="ALLOW"),
     ),
     (
         "sys_os_write plan.json",
         "sys_os_write",
         {"path": ".shipcrew/plan.json", "content": "{}"},
-        {"*": "ALLOW", "reviewer": "DENY", "qa": "DENY", "devops": "DENY"},
+        _write_verdicts("ASK", planner="ALLOW"),
     ),
+    ("redirect outside owned", *_bash("echo x > lib/db.ts"), _only(())),
+    ("redirect inside owned", *_bash("echo x > app/cart/note.txt"), _only(BUILDERS)),
+    ("tee outside owned", *_bash("echo x | tee lib/db.ts"), _only(())),
+    ("mkdir owned", *_bash("mkdir -p app/cart/components"), _only(BUILDERS)),
+    ("cd then write outside", *_bash("cd lib && touch x.ts"), _only(())),
+    ("git mv out of owned", *_bash("git mv app/a.ts lib/a.ts"), _only(())),
+    ("cp into owned", *_bash("cp lib/db.ts app/cart/db-copy.ts"), _only(BUILDERS)),
+    ("log to /tmp", *_bash("npm test > /tmp/test.log 2>&1"), _only(RUNNERS)),
     # orchestrator dispatch hygiene
     (
         "dispatch without purpose",
@@ -250,12 +374,21 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
 ]
 
 PROFILE = {
-    "reviewer": "reviewer",
+    "developer": "builder",
+    "designer": "builder",
+    "integrator": "builder",
+    "scaffolder": "scaffolder",
+    "security": "security",
     "qa": "qa",
+    "reviewer": "reviewer",
     "devops": "devops",
     "planner": "planner",
     ORCHESTRATOR: "orchestrator",
 }
+OWNED_PATHS_POLICY = "shipcrew_owned_paths"
+SHELL_ALLOWLIST_POLICY = "shipcrew_shell_allowlist"
+CLAUDE_NATIVE_CORE_TOOLS = {"Bash", "Read", "Glob", "Grep"}
+CLAUDE_NATIVE_WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 _RANK = {"ALLOW": 0, "ASK": 1, "DENY": 2}
 
@@ -286,8 +419,42 @@ def _verdict(policies: dict[str, Callable[..., Any]], tool: str, args: dict[str,
     return worst
 
 
+def _with_task_contract(bundle: Path) -> AgentSpec:
+    """The bundle as the board starts it: task contract injected by the server code."""
+    from omnigent.shipcrew.sessions import inject_task_contract
+
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = materialize_bundle(bundle, Path(tmp) / "bundle")
+        config = copy / "config.yaml"
+        config.write_text(
+            inject_task_contract(
+                config.read_text(encoding="utf-8"), owned_paths=TASK_OWNED, root=REPO_PATH
+            ),
+            encoding="utf-8",
+        )
+        return parse(copy, expand_env=False)
+
+
 def _check_guardrails(name: str, spec: AgentSpec, errors: list[str]) -> int:
-    profile = PROFILE.get(name, "worker")
+    profile = PROFILE[name]
+    names = {p.name for p in spec.guardrails.policies} if spec.guardrails else set()
+    if profile in BUILDERS:
+        if OWNED_PATHS_POLICY not in names:
+            errors.append(f"{OWNED_PATHS_POLICY} policy missing")
+        # without a task contract (not started from a board card) it abstains
+        raw = _build_policies(spec).get(OWNED_PATHS_POLICY)
+        probe = {"type": "tool_call", "data": {"name": "Write", "arguments": {
+            "file_path": f"{REPO_PATH}/lib/db.ts", "content": "x"}}}
+        if raw is not None and raw(probe, {}).get("result") != "ALLOW":
+            errors.append(f"{OWNED_PATHS_POLICY} without a task contract must abstain")
+        spec = _with_task_contract(AGENTS / name)
+        injected = next(
+            p for p in spec.guardrails.policies if p.name == OWNED_PATHS_POLICY
+        ).function.arguments
+        if injected.get("owned_paths") != TASK_OWNED or injected.get("root") != REPO_PATH:
+            errors.append(f"task contract not injected: {injected}")
+    if profile != "orchestrator" and SHELL_ALLOWLIST_POLICY not in names:
+        errors.append(f"{SHELL_ALLOWLIST_POLICY} policy missing")
     policies = _build_policies(spec)
     for label, tool, args, expected in CASES:
         want = expected.get(profile, expected["*"])
@@ -334,8 +501,33 @@ def _check_conventions(name: str, spec: AgentSpec, errors: list[str]) -> None:
     want_harness = "claude-sdk" if name in SDK_BUNDLES else "claude-native"
     if config.get("harness") != want_harness:
         errors.append(f"harness: expected {want_harness}, got {config.get('harness')!r}")
-    if config.get("permission_mode") != "auto":
-        errors.append(f"permission_mode: expected 'auto', got {config.get('permission_mode')!r}")
+    # claude-sdk: omnigent's `auto` pre-approves tools and the guardrails gate
+    # them. claude-native: Claude's `default` mode + --allowedTools for the
+    # tools the guardrails govern, so an allowlisted command never prompts and
+    # everything else is one ASK in the Inbox. Never bypassPermissions.
+    want_mode = "auto" if name in SDK_BUNDLES else "default"
+    if config.get("permission_mode") != want_mode:
+        errors.append(
+            f"permission_mode: expected {want_mode!r}, got {config.get('permission_mode')!r}"
+        )
+    allowed = {t for t in str(config.get("allowed_tools") or "").replace(" ", ",").split(",") if t}
+    if want_harness == "claude-native":
+        want_tools = CLAUDE_NATIVE_CORE_TOOLS | (
+            set() if name == "reviewer" else CLAUDE_NATIVE_WRITE_TOOLS
+        )
+        if not want_tools <= allowed:
+            errors.append(f"allowed_tools misses {sorted(want_tools - allowed)}")
+        from omnigent.server.routes._sessions.helpers import (
+            _derive_terminal_launch_args_from_spec,
+        )
+
+        launch = _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) or []
+        if launch[:2] != ["--permission-mode", "default"] or "--allowedTools" not in launch:
+            errors.append(f"claude launch args: got {launch}")
+    elif allowed:
+        errors.append("allowed_tools is only for claude-native bundles")
+    if "bypass" in str(config.get("permission_mode", "")).lower():
+        errors.append("bypassPermissions is not allowed")
     if spec.executor.model is not None:
         errors.append("a model is pinned; bundles must run on the configured Claude provider")
     skills = {s.name for s in spec.skills}

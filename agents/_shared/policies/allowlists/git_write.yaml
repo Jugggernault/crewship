@@ -1,0 +1,17 @@
+# Local git writes on the task branch. Still no push and no remote writes
+# (shipcrew_no_remote_writes DENYs them); `git fetch` only reads the remote.
+- "git add"
+- "git commit"
+- "git branch !-D !-d !--delete !-m !-M !--move !-c !-C !--copy !-f !--force !-u !--set-upstream-to* !--unset-upstream !--edit-description"
+- "git switch"
+- "git checkout"
+- "git merge"
+- "git rebase !-i !--interactive !-x !--exec*"
+- "git cherry-pick"
+- "git revert"
+- "git restore"
+- "git reset !--hard !--merge !--keep"
+- "git mv"
+- "git rm"
+- "git stash push -m"
+- "git fetch !--upload-pack*"

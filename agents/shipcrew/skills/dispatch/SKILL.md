@@ -17,9 +17,14 @@ A task is **ready** when it is in `backlog`/`ready` and passes all four gates:
 
 ## Per ready task (emit all tool calls in this turn)
 1. Worktree + branch, from the current integration head:
-   `git worktree add .worktrees/<key> -b shipcrew/<key>-<slug> <base>`
+   `git worktree add .worktrees/<key> -b shipcrew/<id8>-<slug> <base>`
    where `<base>` is `origin/main` (or the local integration branch
-   `shipcrew/integration` in full mode). Record branch + worktree in the registry.
+   `shipcrew/integration` in full mode). The branch name is the one scheme the
+   board and the push guard use: `<id8>` = the first 8 characters of the board
+   task id (in full mode without a board, 8 lowercase hex characters generated
+   once per task, e.g. `python3 -c 'import secrets; print(secrets.token_hex(4))'`,
+   and kept in the registry), `<slug>` = the title in lowercase `a-z0-9`
+   words joined by `-`. Record branch + worktree in the registry.
 2. Dispatch the role agent named by the task's `role`:
    `sys_session_send(agent="<role>", title="<key>-<slug>",
    args={purpose: "implement", input: "<task contract>"})`

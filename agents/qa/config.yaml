@@ -11,10 +11,14 @@ executor:
   type: omnigent
   config:
     harness: claude-native
-    # Headless: no one answers permission prompts. `auto` approves without
-    # prompting and is allowed under managed settings; the guardrails below
-    # are the hard limits.
-    permission_mode: auto
+    # One gate, no bypassPermissions: the guardrails below decide every shell
+    # command (allowlisted -> runs with no prompt, anything else -> an ASK
+    # approval card in the Inbox) and every write (owned paths). Claude's own
+    # `default` mode would prompt a second time, so the tools the policies
+    # govern are pre-approved with --allowedTools; any other tool still gets
+    # Claude's prompt, which omnigent routes to the Inbox too.
+    permission_mode: default
+    allowed_tools: Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent,mcp__chrome-devtools
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
 instructions: AGENTS.md
@@ -28,7 +32,7 @@ os_env:
   sandbox:
     type: none
 
-# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download write_only_qa
+# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_qa write_only_qa
 # GENERATED from agents/_shared/policies/*.yaml by scripts/build_agents.py.
 guardrails:
   ask_timeout: 86400
@@ -144,6 +148,207 @@ guardrails:
             && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
+    # QA shell allowlist: read, test, run the app, curl to localhost only. No git
+    # writes, no file operations, no redirection into files except /dev/null and
+    # /tmp (qa writes only .shipcrew/qa.json, with the Write tool). Anything else asks.
+    shipcrew_shell_allowlist:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.shipcrew.policies.shell_allowlist
+        arguments:
+          role: qa
+          shell_writes: false
+          reason: A human approves or denies it on the approval card.
+          allow:
+            # Read-only shell: listing, reading, searching, text processing. `!glob` words
+            # refuse an argument (find -exec/-delete, sed -i or a `w` command, sort -o ...).
+            - "ls"
+            - "cat"
+            - "head"
+            - "tail"
+            - "wc"
+            - "rg"
+            - "grep"
+            - "egrep"
+            - "fgrep"
+            - "find !-delete !-exec !-execdir !-ok !-okdir !-fprint* !-fls !-fprintf"
+            # sed only with print scripts (`sed -n 5,40p f`, `sed -n '/re/p' f`): a sed
+            # script can write files (w) or run commands (e), so nothing else passes.
+            - 're:^sed -n (-[Er] )?(\d+(,(\d+|\$))?p|\$p|/[^/]*/(,/[^/]*/)?p)( [^ ]+)*$'
+            - "jq"
+            - "yq !-i* !--inplace*"
+            - "tree !-o"
+            - "sort !-o* !--output*"
+            - "cut"
+            - "tr"
+            - "diff"
+            - "cmp"
+            - "comm"
+            - "column"
+            - "nl"
+            - "file"
+            - "stat"
+            - "du"
+            - "df"
+            - "pwd"
+            - "cd"
+            - "echo"
+            - "printf"
+            - "which"
+            - "type"
+            - "basename"
+            - "dirname"
+            - "realpath"
+            - "readlink"
+            - "date"
+            - "sleep"
+            - "true"
+            - "false"
+            - "test"
+            - "["
+            - "uname"
+            - "whoami"
+            - 're:^python3? -m json\.tool( -[-\w]+)*( \S+)?$'
+            - 're:^[\w.@/-]+ (--version|-v|-V)$'
+            # GitHub reads (the board never calls real GitHub; a fake gh is fine too).
+            - "gh pr view"
+            - "gh pr list"
+            - "gh pr diff"
+            - "gh pr checks"
+            - "gh pr status"
+            - "gh run view"
+            - "gh run list"
+            - "gh issue view"
+            - "gh issue list"
+            - "gh repo view"
+            - "gh auth status"
+            # git inspection. No remote writes, no config changes.
+            - "git status"
+            - "git diff !--output*"
+            - "git log !--output*"
+            - "git show !--output*"
+            - "git rev-parse"
+            - "git rev-list"
+            - "git ls-files"
+            - "git ls-tree"
+            - "git cat-file"
+            - "git blame"
+            - "git grep !-O* !--open-files-in-pager*"
+            - "git merge-base"
+            - "git describe"
+            - "git shortlog"
+            - "git name-rev"
+            - "git for-each-ref"
+            - "git show-ref"
+            - "git diff-tree"
+            - "git check-ignore"
+            - "git worktree list"
+            - "git stash list"
+            - "git stash show"
+            - "git reflog $"
+            - "git reflog show"
+            - "git remote $"
+            - "git remote -v $"
+            - "git tag $"
+            - "git tag -l"
+            - "git tag --list"
+            - "git branch $"
+            - "git branch --show-current"
+            - "git branch --list"
+            - "git branch -a $"
+            - "git branch -r $"
+            - "git branch -v $"
+            - "git branch -vv $"
+            - "git branch --contains"
+            - "git branch --merged"
+            - "git config --get"
+            - "git config --get-all"
+            # Package managers (install from the lockfile only), test runners, linters,
+            # typecheckers and builds. Adding or removing a dependency is not here: it
+            # changes package.json + the lockfile (shared contract files) and asks.
+            - "npm test"
+            - "npm t"
+            - "npm run $"
+            - "npm run *"
+            - "npm run-script *"
+            - "npm ci"
+            - "npm ls"
+            - "npm view"
+            - "npm audit !fix"
+            - "pnpm test"
+            - "pnpm run *"
+            - "pnpm install --frozen-lockfile"
+            - "pnpm i --frozen-lockfile"
+            - "pnpm lint"
+            - "pnpm build"
+            - "pnpm typecheck"
+            - "pnpm type-check"
+            - "pnpm ls"
+            - "yarn test"
+            - "yarn run *"
+            - "yarn install --frozen-lockfile"
+            - "yarn install --immutable"
+            - "yarn lint"
+            - "yarn build"
+            - "yarn typecheck"
+            - "node --test"
+            - "npx vitest"
+            - "vitest"
+            - "npx jest"
+            - "jest"
+            - "npx playwright test"
+            - "playwright test"
+            - "npx tsc"
+            - "tsc"
+            - "npx eslint"
+            - "eslint"
+            - "npx prettier"
+            - "prettier"
+            - "npx next build"
+            - "next build"
+            - "npx next lint"
+            - "next lint"
+            - "npx biome"
+            - "biome"
+            - "npx stylelint"
+            - "npx @google/design.md lint"
+            - "pytest"
+            - "python -m pytest"
+            - "python3 -m pytest"
+            - ".venv/bin/pytest"
+            - ".venv/bin/python -m pytest"
+            - "uv run pytest"
+            - "uv run python -m pytest"
+            - "uv run ruff"
+            - "uv run mypy"
+            - "uv run pyright"
+            - "ruff"
+            - "mypy"
+            - "pyright"
+            - "black --check"
+            - "uv sync"
+            - "uv pip install -r"
+            - "uv pip install -e"
+            - ".venv/bin/pip install -r"
+            - ".venv/bin/pip install -e"
+            # Running the app locally and probing it. curl only to localhost / 127.0.0.1 /
+            # [::1] and never writing a file (-o, -O, -T, -c, ... are refused).
+            - "./init.sh"
+            - "bash init.sh"
+            - "sh init.sh"
+            - "npm start"
+            - "npx next dev"
+            - "next dev"
+            - "npx next start"
+            - "next start"
+            - "@curl:curl_localhost"
+            - "ps"
+            - "pgrep"
+            - "ss"
+            - "lsof"
+            - "kill"
+            - "pkill"
     # The qa writes exactly one file: .shipcrew/qa.json. Any other write/edit is refused.
     shipcrew_write_only:
       type: function

@@ -1,0 +1,18 @@
+# Security shell allowlist: the builder set plus running the app and curl to
+# localhost only. Anything else asks.
+shipcrew_shell_allowlist:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.shell_allowlist
+    arguments:
+      role: security
+      shell_writes: true
+      reason: A human approves or denies it on the approval card.
+      allow:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
+        # @include allowlists/git_write
+        # @include allowlists/fs_write
+        # @include allowlists/dev_tools
+        # @include allowlists/run_app

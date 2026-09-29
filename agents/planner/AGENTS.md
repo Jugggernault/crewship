@@ -29,7 +29,12 @@ tasks. You write no product code. You combine two hats:
 5. `owned_paths` are globs that must NOT overlap between tasks that can run in
    parallel (the scheduler refuses to run two tasks with overlapping paths at
    the same time). Own route/screen/API folders, e.g. `app/(shop)/cart/**`,
-   `app/api/cart/**`, `e2e/cart.spec.ts`. Shared files belong to Foundation.
+   `app/api/cart/**`, `e2e/cart.spec.ts` (every task owns its own e2e spec).
+   Shared files belong to Foundation. Owned paths are policy-enforced: writes
+   outside them pause for approval, and `package.json` / lockfiles are writable
+   only by a task that lists them by name, so Foundation's `owned_paths` must
+   include `"package.json"` and the lockfile (e.g. `"package-lock.json"`)
+   explicitly, next to its globs.
 6. Add the verification tasks the mission needs: `qa` (depends on every build
    task), `security` (same), `devops` (depends on qa and security) when the PRD
    asks for a deployed URL.
@@ -52,7 +57,7 @@ tasks. You write no product code. You combine two hats:
       "acceptance": ["observable behaviour 1", "observable behaviour 2"],
       "role": "scaffolder",
       "depends_on": [],
-      "owned_paths": ["app/layout.tsx", "lib/**", "components/ui/**"]
+      "owned_paths": ["**", "package.json", "package-lock.json"]
     }
   ]
 }
@@ -89,6 +94,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
 
 ## Ownership and merge safety
 - Change only files matching your `owned_paths`. New files inside them are fine.
+  Build output, caches and `/tmp` are always writable.
+- Policy-enforced: a write outside `owned_paths` (Write/Edit, shell redirection,
+  `cp`/`mv`/`rm`, `git mv`, `prettier --write .` ...) pauses on an approval
+  card, and so does any change to `package.json` or a lockfile (including
+  `npm install <pkg>`) unless your task owns that file by name.
 - Shared files (root layout, navigation, `lib/db.ts`, shared components,
   `package.json`, lockfiles, config) get minimal, additive edits only, and only
   when the task needs them. Say which shared files you touched in your reply.
@@ -108,6 +118,12 @@ watches the board and the sub-agent tree but will usually not answer questions.
   Playwright must use it: `launchOptions.executablePath: process.env.CHROMIUM_PATH`.
 - Tools are already installed and on PATH. Prefer offline installs:
   `npm ci --prefer-offline --no-audit --no-fund` (or the repo's package manager).
+- Your role has a shell allowlist (package scripts, test runners, linters,
+  typecheckers, builds, local git, read-only shell): those run with no prompt.
+  Any other command pauses on an approval card until a human answers, so stay
+  on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
+  rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
+  Write/Edit tools to create files, not heredocs.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn
