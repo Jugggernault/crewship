@@ -1,0 +1,1 @@
+{"name":"shipcrew-brief","private":true,"type":"module","scripts":{"build":"tsx render.tsx"},"dependencies":{"@formepdf/core":"^0.25.0","@formepdf/react":"^0.25.0","@types/react":"^19.3.0","react":"^19.3.0","react-dom":"^19.3.0","tsx":"^4.23.15","typescript":"^7.0.2"}}
