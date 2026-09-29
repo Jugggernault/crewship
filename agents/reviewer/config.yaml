@@ -420,6 +420,12 @@ guardrails:
             - "pnpm -s test"
             - "pnpm --silent test"
             - "pnpm -s run test"
+            - "npm run -s lint"
+            - "npm run -s typecheck"
+            - "npm run -s test"
+            - "npm run --silent lint"
+            - "npm run --silent typecheck"
+            - "npm run --silent test"
     # Report-only: every file write/edit tool is refused (reads and shell still work).
     read_only_os:
       type: function
