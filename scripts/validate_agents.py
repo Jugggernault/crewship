@@ -75,7 +75,7 @@ MCP_SERVERS: dict[str, set[str]] = {
     "reviewer": set(),
     "integrator": set(),
     "qa": {"chrome-devtools"},
-    "security": set(),
+    "security": {"chrome-devtools"},
     "devops": set(),  # deploys with the vercel CLI
     "shipcrew": set(),
 }

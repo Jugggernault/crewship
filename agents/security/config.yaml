@@ -18,11 +18,12 @@ executor:
     # govern are pre-approved with --allowedTools; any other tool still gets
     # Claude's prompt, which omnigent routes to the Inbox too.
     permission_mode: default
-    allowed_tools: Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent
-    # >>> shipcrew-mcp:
+    allowed_tools: Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent,mcp__chrome-devtools
+    # >>> shipcrew-mcp: chrome-devtools
     # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
     # Only these MCP servers (plus omnigent's relay), never the host user's own.
     strict_mcp_config: true
+    mcp_config: '{"mcpServers":{"chrome-devtools":{"command":"npx","args":["-y","chrome-devtools-mcp@latest","--headless","--isolated","--executablePath","${CHROMIUM_PATH:-/usr/bin/chromium}"]}}}'
     # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
