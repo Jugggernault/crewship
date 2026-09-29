@@ -1,0 +1,155 @@
+spec_version: 1
+name: planner
+description: >-
+  shipcrew planner (product manager + architect): turns a PRD into
+  .shipcrew/plan.json, a task DAG with acceptance criteria, depends_on,
+  disjoint owned_paths, stack and data model.
+
+# Planning is reasoning + a single JSON file, no code: the Claude Agent SDK
+# harness (claude-sdk). No model is pinned: it runs on the configured Claude
+# provider (a Claude subscription works).
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+    permission_mode: auto
+
+# ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
+instructions: AGENTS.md
+
+# cwd is the mission repo. It reads the PRD and writes only .shipcrew/plan.json
+# (enforced by shipcrew_write_only).
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: none
+
+# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download write_only_planner
+# GENERATED from agents/_shared/policies/*.yaml by scripts/build_agents.py.
+guardrails:
+  ask_timeout: 86400
+  policies:
+    # Polly's catastrophic DENY set: force-push, rm -rf of / or a system dir,
+    # hard reset to a remote ref. Everything recoverable runs without an ASK
+    # (headless workers cannot answer one), the push ban is shipcrew_no_remote_writes.
+    blast_radius:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.orchestration.blast_radius
+        arguments:
+          gate_pushes: false
+    # Workers never publish: the shipcrew orchestrator pushes and runs the PR loop.
+    shipcrew_no_remote_writes:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Workers may not push or open/merge PRs; the shipcrew orchestrator does that. Commit locally and finish.
+          expression: |
+            event.type == "tool_call"
+            && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+            && has(event.data.arguments.command)
+            && (
+              event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
+              || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+(pr\s+(create|merge|close|reopen|ready)|release\s+create|repo\s+(create|delete|fork))\b')
+              || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+api\b.*(-X|--method)(\s+|=)?(POST|PUT|PATCH|DELETE)\b')
+            )
+            ? {"result": "DENY"}
+            : {"result": "ALLOW"}
+    # Secrets stay out of the model context. .env.example / .sample / .template are fine.
+    # `vercel env pull` is the one allowed command naming a .env file (it writes it).
+    shipcrew_no_env_read:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Reading .env* secret files is not allowed. Refer to variables by name only.
+          expression: |
+            event.type == "tool_call"
+            && (
+              (
+                event.data.name in ["Read", "Grep", "sys_os_read", "read", "grep"]
+                && (
+                  (has(event.data.arguments.file_path)
+                    && event.data.arguments.file_path.matches(r'(^|/)\.env(\.[^/]*)?$')
+                    && !event.data.arguments.file_path.matches(r'(^|/)\.env\.(example|sample|template|dist)$'))
+                  || (has(event.data.arguments.path)
+                    && event.data.arguments.path.matches(r'(^|/)\.env(\.[^/]*)?$')
+                    && !event.data.arguments.path.matches(r'(^|/)\.env\.(example|sample|template|dist)$'))
+                )
+              )
+              || (
+                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+                && has(event.data.arguments.command)
+                && event.data.arguments.command.matches(r'(^|[\s\x22\x27=<>/:])\.env(\.(local|development|production|test|preview|staging|prod|dev))*($|[\s\x22\x27;|&)>])')
+                && !event.data.arguments.command.matches(r'^\s*(npx\s+)?vercel\s+env\s+pull\b[^;&|]*$')
+              )
+            )
+            ? {"result": "DENY"}
+            : {"result": "ALLOW"}
+    # CI definitions are the merge gate: changing them needs a human (approval card
+    # in the Inbox). Read-only shell (cat, ls, grep, git diff ...) passes.
+    shipcrew_workflows_approval:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Editing .github/workflows/** needs human approval.
+          expression: |
+            event.type == "tool_call"
+            && (
+              (
+                event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
+                && (
+                  (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.github/workflows/'))
+                  || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.github/workflows/'))
+                  || (has(event.data.arguments.notebook_path) && event.data.arguments.notebook_path.matches(r'(^|/)\.github/workflows/'))
+                )
+              )
+              || (
+                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+                && has(event.data.arguments.command)
+                && event.data.arguments.command.matches(r'\.github/workflows')
+                && !event.data.arguments.command.matches(r'^\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b[^;&|>]*$')
+              )
+            )
+            ? {"result": "ASK"}
+            : {"result": "ALLOW"}
+    # A browser is preinstalled at $CHROMIUM_PATH; browser downloads are never needed.
+    shipcrew_no_browser_download:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Never download browsers. Use the preinstalled one at $CHROMIUM_PATH (launchOptions.executablePath).
+          expression: |
+            event.type == "tool_call"
+            && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+            && has(event.data.arguments.command)
+            && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
+            ? {"result": "DENY"}
+            : {"result": "ALLOW"}
+    # The planner writes exactly one file: .shipcrew/plan.json. Any other write/edit is refused.
+    shipcrew_write_only:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: The planner may only write .shipcrew/plan.json.
+          expression: |
+            event.type == "tool_call"
+            && event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
+            && !(
+              (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.shipcrew/plan\.json$'))
+              || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.shipcrew/plan\.json$'))
+            )
+            ? {"result": "DENY"}
+            : {"result": "ALLOW"}
+# <<< shipcrew-guardrails

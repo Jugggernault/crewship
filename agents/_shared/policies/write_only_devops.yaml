@@ -1,0 +1,17 @@
+# The devops writes exactly one file: .shipcrew/deploy.json. Any other write/edit is refused.
+shipcrew_write_only:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.policies.builtins.cel.cel_policy
+    arguments:
+      reason: The devops may only write .shipcrew/deploy.json.
+      expression: |
+        event.type == "tool_call"
+        && event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
+        && !(
+          (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.shipcrew/deploy\.json$'))
+          || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.shipcrew/deploy\.json$'))
+        )
+        ? {"result": "DENY"}
+        : {"result": "ALLOW"}

@@ -1,0 +1,32 @@
+# Secrets stay out of the model context. .env.example / .sample / .template are fine.
+# `vercel env pull` is the one allowed command naming a .env file (it writes it).
+shipcrew_no_env_read:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.policies.builtins.cel.cel_policy
+    arguments:
+      reason: Reading .env* secret files is not allowed. Refer to variables by name only.
+      expression: |
+        event.type == "tool_call"
+        && (
+          (
+            event.data.name in ["Read", "Grep", "sys_os_read", "read", "grep"]
+            && (
+              (has(event.data.arguments.file_path)
+                && event.data.arguments.file_path.matches(r'(^|/)\.env(\.[^/]*)?$')
+                && !event.data.arguments.file_path.matches(r'(^|/)\.env\.(example|sample|template|dist)$'))
+              || (has(event.data.arguments.path)
+                && event.data.arguments.path.matches(r'(^|/)\.env(\.[^/]*)?$')
+                && !event.data.arguments.path.matches(r'(^|/)\.env\.(example|sample|template|dist)$'))
+            )
+          )
+          || (
+            event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+            && has(event.data.arguments.command)
+            && event.data.arguments.command.matches(r'(^|[\s\x22\x27=<>/:])\.env(\.(local|development|production|test|preview|staging|prod|dev))*($|[\s\x22\x27;|&)>])')
+            && !event.data.arguments.command.matches(r'^\s*(npx\s+)?vercel\s+env\s+pull\b[^;&|]*$')
+          )
+        )
+        ? {"result": "DENY"}
+        : {"result": "ALLOW"}
