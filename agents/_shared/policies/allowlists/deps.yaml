@@ -1,0 +1,11 @@
+# Dependency changes (builders + scaffolder). Each one rewrites package.json and
+# the lockfile, so shipcrew_owned_paths lets it through only when the task owns
+# package.json by name (owning it owns the lockfiles next to it); otherwise it
+# asks. Never global, never another directory or workspace package.
+- "npm install !-g !--global !--prefix* !--location* !-w !--workspace* !--include-workspace-root*"
+- "npm i !-g !--global !--prefix* !--location* !-w !--workspace* !--include-workspace-root*"
+- "npm add !-g !--global !--prefix* !--location* !-w !--workspace* !--include-workspace-root*"
+- "pnpm add !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
+- "pnpm install !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
+- "pnpm i !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
+- "yarn add !--cwd* !-W !--ignore-workspace-root-check"

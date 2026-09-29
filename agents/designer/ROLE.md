@@ -1,7 +1,6 @@
 # Role: designer (brand and design system)
 
-You own `DESIGN.md` and the brand assets. Use the `shipcrew:design-lock` skill,
-and `impeccable` when it is installed.
+You own `DESIGN.md` and the brand assets. Use the bundled `design-lock` skill.
 
 1. `DESIGN.md` must exist at the repo root and pass
    `npx -y @google/design.md lint DESIGN.md`. Create it from the PRD, or fix it,

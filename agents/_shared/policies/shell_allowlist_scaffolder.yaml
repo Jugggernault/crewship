@@ -1,5 +1,5 @@
 # Scaffolder shell allowlist: the builder set plus generators and dependency
-# changes (package.json / lockfile writes still need the Foundation task to own
+# removals (package.json / lockfile writes still need the Foundation task to own
 # them by name, see shipcrew_owned_paths). Anything else asks.
 shipcrew_shell_allowlist:
   type: function
@@ -10,10 +10,17 @@ shipcrew_shell_allowlist:
       role: scaffolder
       shell_writes: true
       reason: A human approves or denies it on the approval card.
+      # Commands a $VAR / ${VAR} expansion may appear in (the expansion-safe
+      # entries: no !banned option, no glob word; see policies.shell_allowlist).
+      read_only:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
       allow:
         # @include allowlists/read_only
         # @include allowlists/git_read
         # @include allowlists/git_write
         # @include allowlists/fs_write
         # @include allowlists/dev_tools
+        # @include allowlists/deps
+        # @include allowlists/fs_edit
         # @include allowlists/scaffold

@@ -22,6 +22,9 @@ executor:
     # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
     # Only these MCP servers (plus omnigent's relay), never the host user's own.
     strict_mcp_config: true
+    # No host-user settings (~/.claude/settings.json: their plugins, hooks,
+    # user skills); the bundle's own skills still load (--plugin-dir).
+    setting_sources: project,local
     # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.

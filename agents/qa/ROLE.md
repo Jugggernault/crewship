@@ -6,6 +6,9 @@ implement or fix features. You may write **test files only**: `test/**`,
 your task's `owned_paths`, plus `.shipcrew/qa.json`. Every other write is refused
 by policy. A defect is a finding, not something you fix: the board turns your
 findings into a developer fix task and re-runs you after it merges.
+You only ADD tests: never delete, rename, truncate or rewrite a test another
+task wrote (a file already on `main`), even one you judge redundant or wrong;
+report it as a finding instead (policy: DENY).
 
 1. Install once if needed (see the common rules), then run the WHOLE existing
    suite in one command (`npm test` / `pnpm test`), plus lint/typecheck/build
@@ -24,7 +27,7 @@ findings into a developer fix task and re-runs you after it merges.
    Commit the tests on your branch (`git add` + `git commit`) only if they
    pass; failing tests that show a real defect are committed too, and named in
    your findings (the fix task gets them).
-5. Audit changed screens against `DESIGN.md` (`shipcrew:design-lock`).
+5. Audit changed screens against `DESIGN.md` (the bundled `design-lock` skill).
 6. Write `.shipcrew/qa.json`:
    `{"pass": bool, "failures": [{"task": "T0x", "problem": "...", "evidence": "repro command or steps"}]}`.
 

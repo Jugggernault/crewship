@@ -4,8 +4,8 @@ description: >-
   shipcrew integrator: merges origin/main into a conflicting or broken task branch, keeps both sides' behaviour, proves no conflict markers remain, CI green.
 
 # Code-writing / tool-heavy role: the real Claude Code CLI (claude-native), so
-# the human can open its terminal from the board and take over, and it sees
-# the user's installed plugins and skills (MCP servers: only its own, below). No model is pinned:
+# the human can open its terminal from the board and take over, with only its
+# bundle's skills and MCP servers (no host-user plugins, hooks or settings). No model is pinned:
 # it runs on the configured Claude provider (a Claude subscription works).
 executor:
   type: omnigent
@@ -23,6 +23,9 @@ executor:
     # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
     # Only these MCP servers (plus omnigent's relay), never the host user's own.
     strict_mcp_config: true
+    # No host-user settings (~/.claude/settings.json: their plugins, hooks,
+    # user skills); the bundle's own skills still load (--plugin-dir).
+    setting_sources: project,local
     # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
@@ -135,7 +138,9 @@ guardrails:
     # Builder shell allowlist (developer, designer, integrator): these commands run
     # with no prompt; any other command, or one with $(..), `..` or a heredoc,
     # pauses on an approval card (Inbox; the board card goes to Intervention).
-    # Write targets are judged by shipcrew_owned_paths.
+    # Write targets are judged by shipcrew_owned_paths: dependency changes (deps)
+    # pass only when the task owns package.json, `sed -i` / `perl -pi` (fs_edit)
+    # only on owned files. Chains, pipes, `2>&1` and `$?` are fine when every part is.
     shipcrew_shell_allowlist:
       type: function
       on: [tool_call]
@@ -145,7 +150,9 @@ guardrails:
           role: builder
           shell_writes: true
           reason: A human approves or denies it on the approval card.
-          allow:
+          # Commands a $VAR / ${VAR} expansion may appear in (the expansion-safe
+          # entries: no !banned option, no glob word; see policies.shell_allowlist).
+          read_only:
             # Read-only shell: listing, reading, searching, text processing. `!glob` words
             # refuse an argument (find -exec/-delete, sed -i or a `w` command, sort -o ...).
             - "ls"
@@ -153,7 +160,7 @@ guardrails:
             - "head"
             - "tail"
             - "wc"
-            - "rg"
+            - "rg !--pre*"  # --pre runs a preprocessor command
             - "grep"
             - "egrep"
             - "fgrep"
@@ -165,6 +172,7 @@ guardrails:
             - "yq !-i* !--inplace*"
             - "tree !-o"
             - "sort !-o* !--output*"
+            - "uniq"  # `uniq IN OUT` writes OUT: judged as a write
             - "cut"
             - "tr"
             - "diff"
@@ -179,7 +187,7 @@ guardrails:
             - "pwd"
             - "cd"
             - "echo"
-            - "printf"
+            - "printf !-v*"  # printf -v sets a shell variable
             - "which"
             - "type"
             - "basename"
@@ -188,6 +196,7 @@ guardrails:
             - "readlink"
             - "date"
             - "sleep"
+            - "wait"  # for a job started with a trailing `&`
             - "true"
             - "false"
             - "test"
@@ -214,7 +223,7 @@ guardrails:
             - "git log !--output*"
             - "git show !--output*"
             - "git rev-parse"
-            - "git rev-list"
+            - "git rev-list !--output*"
             - "git ls-files"
             - "git ls-tree"
             - "git cat-file"
@@ -222,11 +231,117 @@ guardrails:
             - "git grep !-O* !--open-files-in-pager*"
             - "git merge-base"
             - "git describe"
-            - "git shortlog"
+            - "git shortlog !--output*"
             - "git name-rev"
             - "git for-each-ref"
             - "git show-ref"
-            - "git diff-tree"
+            - "git diff-tree !--output*"
+            - "git check-ignore"
+            - "git worktree list"
+            - "git stash list"
+            - "git stash show"
+            - "git reflog $"
+            - "git reflog show"
+            - "git remote $"
+            - "git remote -v $"
+            - "git tag $"
+            - "git tag -l"
+            - "git tag --list"
+            - "git branch $"
+            - "git branch --show-current"
+            - "git branch --list"
+            - "git branch -a $"
+            - "git branch -r $"
+            - "git branch -v $"
+            - "git branch -vv $"
+            - "git branch --contains"
+            - "git branch --merged"
+            - "git config --get"
+            - "git config --get-all"
+          allow:
+            # Read-only shell: listing, reading, searching, text processing. `!glob` words
+            # refuse an argument (find -exec/-delete, sed -i or a `w` command, sort -o ...).
+            - "ls"
+            - "cat"
+            - "head"
+            - "tail"
+            - "wc"
+            - "rg !--pre*"  # --pre runs a preprocessor command
+            - "grep"
+            - "egrep"
+            - "fgrep"
+            - "find !-delete !-exec !-execdir !-ok !-okdir !-fprint* !-fls !-fprintf"
+            # sed only with print scripts (`sed -n 5,40p f`, `sed -n '/re/p' f`): a sed
+            # script can write files (w) or run commands (e), so nothing else passes.
+            - 're:^sed -n (-[Er] )?(\d+(,(\d+|\$))?p|\$p|/[^/]*/(,/[^/]*/)?p)( [^ ]+)*$'
+            - "jq"
+            - "yq !-i* !--inplace*"
+            - "tree !-o"
+            - "sort !-o* !--output*"
+            - "uniq"  # `uniq IN OUT` writes OUT: judged as a write
+            - "cut"
+            - "tr"
+            - "diff"
+            - "cmp"
+            - "comm"
+            - "column"
+            - "nl"
+            - "file"
+            - "stat"
+            - "du"
+            - "df"
+            - "pwd"
+            - "cd"
+            - "echo"
+            - "printf !-v*"  # printf -v sets a shell variable
+            - "which"
+            - "type"
+            - "basename"
+            - "dirname"
+            - "realpath"
+            - "readlink"
+            - "date"
+            - "sleep"
+            - "wait"  # for a job started with a trailing `&`
+            - "true"
+            - "false"
+            - "test"
+            - "["
+            - "uname"
+            - "whoami"
+            - 're:^python3? -m json\.tool( -[-\w]+)*( \S+)?$'
+            - 're:^[\w.@/-]+ (--version|-v|-V)$'
+            # GitHub reads (the board never calls real GitHub; a fake gh is fine too).
+            - "gh pr view"
+            - "gh pr list"
+            - "gh pr diff"
+            - "gh pr checks"
+            - "gh pr status"
+            - "gh run view"
+            - "gh run list"
+            - "gh issue view"
+            - "gh issue list"
+            - "gh repo view"
+            - "gh auth status"
+            # git inspection. No remote writes, no config changes.
+            - "git status"
+            - "git diff !--output*"
+            - "git log !--output*"
+            - "git show !--output*"
+            - "git rev-parse"
+            - "git rev-list !--output*"
+            - "git ls-files"
+            - "git ls-tree"
+            - "git cat-file"
+            - "git blame"
+            - "git grep !-O* !--open-files-in-pager*"
+            - "git merge-base"
+            - "git describe"
+            - "git shortlog !--output*"
+            - "git name-rev"
+            - "git for-each-ref"
+            - "git show-ref"
+            - "git diff-tree !--output*"
             - "git check-ignore"
             - "git worktree list"
             - "git stash list"
@@ -343,6 +458,23 @@ guardrails:
             - "uv pip install -e"
             - ".venv/bin/pip install -r"
             - ".venv/bin/pip install -e"
+            # Dependency changes (builders + scaffolder). Each one rewrites package.json and
+            # the lockfile, so shipcrew_owned_paths lets it through only when the task owns
+            # package.json by name (owning it owns the lockfiles next to it); otherwise it
+            # asks. Never global, never another directory or workspace package.
+            - "npm install !-g !--global !--prefix* !--location* !-w !--workspace* !--include-workspace-root*"
+            - "npm i !-g !--global !--prefix* !--location* !-w !--workspace* !--include-workspace-root*"
+            - "npm add !-g !--global !--prefix* !--location* !-w !--workspace* !--include-workspace-root*"
+            - "pnpm add !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
+            - "pnpm install !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
+            - "pnpm i !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
+            - "yarn add !--cwd* !-W !--ignore-workspace-root-check"
+            # In-place text edits (builders + scaffolder): `sed -i` with substitution
+            # scripts only (no w/e/r commands or flags) and `perl -pi -e 's/a/b/g'` with one
+            # code-free substitution (no /e, no @{..}, no $var interpolation). The edited
+            # files are write targets for shipcrew_owned_paths (and the workflows guard).
+            - "@sed:sed_in_place"
+            - "@perl:perl_in_place"
     # Task ownership: a write (Write/Edit, shell redirection, cp/mv/rm/touch/mkdir,
     # git mv/rm/restore, prettier --write, eslint --fix, a dependency change)
     # outside the task's owned_paths asks, and so does a write to package.json or a

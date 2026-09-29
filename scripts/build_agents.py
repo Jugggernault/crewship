@@ -18,8 +18,9 @@ into each bundle:
   ``# >>> shipcrew-mcp: <server> ...`` and ``# <<< shipcrew-mcp`` markers, from
   ``agents/_shared/mcp/<server>.json`` (one server object each):
   ``strict_mcp_config: true`` always (the session gets none of the host user's
-  own MCP servers, plugins or claude.ai connectors), plus ``mcp_config`` with
-  the listed servers. omnigent turns them into ``--strict-mcp-config`` /
+  own MCP servers, plugins or claude.ai connectors), ``setting_sources:
+  project,local`` (no ``~/.claude/settings.json``: no user plugins, hooks or
+  skills), plus ``mcp_config`` with the listed servers. omnigent turns them into ``--strict-mcp-config`` /
   ``--mcp-config`` (``omnigent/shipcrew/launch_args.py`` in the fork); its own
   relay (``sys_*`` tools) is added on top.
 
@@ -49,6 +50,9 @@ MCP = SHARED / "mcp"
 # Approvals (ASK) wait a full day: an approval card should outlive a human
 # stepping away, as in omnigent's polly.
 ASK_TIMEOUT = 86400
+# Claude setting sources every session loads: never "user" (the host user's
+# plugins, SessionStart hooks and skills would leak into the crew).
+SETTING_SOURCES = "project,local"
 
 _INCLUDE_RE = re.compile(r"^(?P<indent>[ \t]*)# @include (?P<name>[A-Za-z0-9_./-]+)[ \t]*$")
 
@@ -145,6 +149,9 @@ def render_mcp(names: list[str], indent: str) -> str:
         "# GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.",
         "# Only these MCP servers (plus omnigent's relay), never the host user's own.",
         "strict_mcp_config: true",
+        "# No host-user settings (~/.claude/settings.json: their plugins, hooks,",
+        "# user skills); the bundle's own skills still load (--plugin-dir).",
+        f"setting_sources: {SETTING_SOURCES}",
     ]
     if names:
         payload = json.dumps(mcp_servers(names), separators=(",", ":"))
