@@ -25,7 +25,7 @@ provider configured with `omnigent setup`.
 | `integrator` | `claude-native` | bundled: `resolve-conflicts` | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `qa` | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | qa allowlist (read, test, run the app, curl localhost; no shell writes); writes only `.shipcrew/qa.json` | `PASS` / `FAIL: <n> failures` |
 | `security` | `claude-native` | `security-review` (curl + Playwright, no browser MCP) | security allowlist (builder + run the app, curl localhost), owned paths | `PASS` / `FAIL` |
-| `devops` | `claude-native` | `vercel:deploy`, `vercel:deployments-cicd` | devops allowlist (read-only + Vercel reads); writes only `.shipcrew/deploy.json` | `PASS` / `FAIL` |
+| `devops` | `claude-native` | `vercel:deploy`, `vercel:deployments-cicd` | devops allowlist (read-only, Vercel reads, the exact ship commands, curl to `*.vercel.app`); writes only `.shipcrew/deploy.json` | `DEPLOYED: <url>` / `FAIL: <reason>` |
 
 Permissions are set up so that nothing ever uses `bypassPermissions` (see
 [Permissions](#permissions-allowlists-and-owned-paths)).
@@ -40,6 +40,22 @@ from a different vendor. We only have Claude, so the orchestrator starts a
 session gets only a saved diff snapshot and the task contract, never the
 implementer's worktree or transcript. It can't edit files, and it may be given
 a stronger `args.model` than the implementer.
+
+### Decisions and the ship stage
+
+Every role except the reviewer ends its final reply with a `Decisions:` list
+right before the verdict line (`_shared/COMMON.md`): what it chose without
+asking, one line each, or `Decisions: none`. The omnigent fork parses it
+(`omnigent/shipcrew/decisions.py`) into the card's `decisions` (merged across
+fix turns) and the planner's into `mission.plan_decisions`; the board drawer
+and the mission report show them.
+
+Nobody plans a deploy task any more. When every agent task of a mission is
+merged, the server ships it (`omnigent/shipcrew/ship.py`): a `devops` session
+in a fresh worktree of `main` runs `vercel link --yes --project <repo-name>`
+and `vercel deploy --prod --yes` and ends with `DEPLOYED: <url>`; the server
+then checks the URL itself and writes the report. A blocked or intervention
+card stops the ship (the reason shows on the mission).
 
 ### MCP servers per role
 
@@ -109,7 +125,7 @@ is expanded by `build_agents.py`:
 | qa | `read_only`, `git_read`, `dev_tools`, `run_app`; `shell_writes: false` |
 | read-only (planner) | `read_only`, `git_read`; `shell_writes: false` |
 | reviewer | `read_only`, `git_read`, `test_runners` (npm test, node --test, vitest run, jest, pytest); `shell_writes: false` |
-| devops | `read_only`, `git_read`, `vercel_read`; `shell_writes: false` |
+| devops | `read_only`, `git_read`, `vercel_read`, `vercel_deploy`; `shell_writes: false` |
 
 The groups:
 
@@ -135,8 +151,13 @@ The groups:
 - `run_app`: `./init.sh`, `npm start`, `next dev/start`, `ps ss lsof kill
   pkill`, and `curl` to `localhost`/`127.0.0.1`/`[::1]` only. curl may not
   write a file: `-o`, `-O`, `-T`, `-K`, `-c`, `-D` and `--proxy` are refused.
-- `vercel_read`: `vercel ls/inspect/whoami/logs/project ls/env ls/domains
-  ls/alias ls`. `vercel link`/`git connect`/`deploy`/`env pull` ASK.
+- `vercel_read`: `vercel whoami/ls/inspect/logs` (the global CLI, no `npx`).
+  `env`, `domains`, `alias`, `project`, `git connect`, `remove` ... ASK.
+- `vercel_deploy` (the ship stage, exactly): `vercel link --yes --project
+  <name>` (lowercase `[a-z0-9._-]` name), `vercel deploy --prod --yes`, and
+  `curl` to `https://*.vercel.app` with only `-sSILfv`, `--head/--silent/...`,
+  `-o /dev/null` and `-m <s>`: no data, method, header or config flag. Any other
+  form (`--scope`, `--force`, a preview deploy, `vercel --prod`) ASKs.
 
 **How it reaches the session.** When the board starts a task, the server
 (`omnigent/shipcrew/sessions.py`) packs the role bundle and writes the task's

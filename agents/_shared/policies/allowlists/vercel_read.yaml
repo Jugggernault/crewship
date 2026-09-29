@@ -1,19 +1,7 @@
-# Vercel reads. Linking, connecting, deploying and env pulls ask.
+# Vercel reads only (the global `vercel` CLI, never an `npx` download).
+# `env`, `domains`, `alias`, `project`, `git connect`, `remove` ... ask.
+- "vercel whoami $"
 - "vercel ls"
 - "vercel list"
 - "vercel inspect"
-- "vercel whoami"
-- "vercel project ls"
-- "vercel project list"
-- "vercel projects ls"
 - "vercel logs"
-- "vercel env ls"
-- "vercel domains ls"
-- "vercel alias ls"
-- "npx vercel ls"
-- "npx vercel list"
-- "npx vercel inspect"
-- "npx vercel whoami"
-- "npx vercel project ls"
-- "npx vercel logs"
-- "npx vercel env ls"

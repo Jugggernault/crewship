@@ -1,6 +1,7 @@
-# Devops shell allowlist: read-only shell, git reads and Vercel reads.
-# `vercel link` / `git connect` / deploys / `env pull` ask. No redirection into
-# files except /dev/null and /tmp.
+# Devops shell allowlist: read-only shell, git reads, Vercel reads, and the ship
+# stage's exact `vercel link --yes --project <name>` / `vercel deploy --prod --yes`
+# plus curl to *.vercel.app. Every other vercel command (env, domains, git
+# connect, remove, ...) asks. No redirection into files except /dev/null and /tmp.
 shipcrew_shell_allowlist:
   type: function
   on: [tool_call]
@@ -14,3 +15,4 @@ shipcrew_shell_allowlist:
         # @include allowlists/read_only
         # @include allowlists/git_read
         # @include allowlists/vercel_read
+        # @include allowlists/vercel_deploy

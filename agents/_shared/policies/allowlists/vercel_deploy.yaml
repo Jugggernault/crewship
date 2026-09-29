@@ -1,0 +1,7 @@
+# The ship stage, exactly: link the worktree to the repo's project, deploy
+# production, check the deployment answers. Any other form of these asks.
+- 're:^vercel link --yes --project [a-z0-9][a-z0-9._-]{0,99}$'
+- 're:^vercel deploy --prod --yes$'
+# curl to a *.vercel.app deployment: GET/HEAD, output only to /dev/null, no
+# data, no method, no headers, no config file.
+- 're:^curl( -[sSILfv]+| --(head|silent|show-error|location|fail|verbose)| -o /dev/null| (-m|--max-time|--connect-timeout) [0-9]{1,3})* https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.vercel\.app(/[^ ]*)?$'
