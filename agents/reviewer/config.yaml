@@ -397,6 +397,15 @@ guardrails:
             - "python3 -m pytest"
             - ".venv/bin/pytest"
             - "uv run pytest"
+            - "pnpm -s lint"
+            - "pnpm --silent lint"
+            - "pnpm -s run lint"
+            - "pnpm -s typecheck"
+            - "pnpm --silent typecheck"
+            - "pnpm -s run typecheck"
+            - "pnpm -s test"
+            - "pnpm --silent test"
+            - "pnpm -s run test"
     # Report-only: every file write/edit tool is refused (reads and shell still work).
     read_only_os:
       type: function

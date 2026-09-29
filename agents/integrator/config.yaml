@@ -479,6 +479,21 @@ guardrails:
             - "uv pip install -e"
             - ".venv/bin/pip install -r"
             - ".venv/bin/pip install -e"
+            - "pnpm -s lint"
+            - "pnpm --silent lint"
+            - "pnpm -s run lint"
+            - "pnpm -s typecheck"
+            - "pnpm --silent typecheck"
+            - "pnpm -s run typecheck"
+            - "pnpm -s test"
+            - "pnpm --silent test"
+            - "pnpm -s run test"
+            - "pnpm -s build"
+            - "pnpm --silent build"
+            - "pnpm -s run build"
+            - "pnpm -s e2e"
+            - "pnpm --silent e2e"
+            - "pnpm -s run e2e"
             # Dependency changes (builders + scaffolder). Each one rewrites package.json and
             # the lockfile, so shipcrew_owned_paths lets it through only when the task owns
             # package.json by name (owning it owns the lockfiles next to it); otherwise it

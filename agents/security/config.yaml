@@ -465,6 +465,21 @@ guardrails:
             - "uv pip install -e"
             - ".venv/bin/pip install -r"
             - ".venv/bin/pip install -e"
+            - "pnpm -s lint"
+            - "pnpm --silent lint"
+            - "pnpm -s run lint"
+            - "pnpm -s typecheck"
+            - "pnpm --silent typecheck"
+            - "pnpm -s run typecheck"
+            - "pnpm -s test"
+            - "pnpm --silent test"
+            - "pnpm -s run test"
+            - "pnpm -s build"
+            - "pnpm --silent build"
+            - "pnpm -s run build"
+            - "pnpm -s e2e"
+            - "pnpm --silent e2e"
+            - "pnpm -s run e2e"
             # Running the app locally (verify roles). A vetted variable may be an argument
             # (`npx next start -p ${PORT:-3000}`, `pkill -f "next start -p $PORT"`). The
             # curl probes are the local_http group.
