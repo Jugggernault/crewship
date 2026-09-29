@@ -95,7 +95,8 @@ guardrails:
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
     # CI definitions are the merge gate: changing them needs a human (approval card
-    # in the Inbox). Read-only shell (cat, ls, grep, git diff ...) passes.
+    # in the Inbox). Read-only shell (cat, ls, grep, git diff ..., also chained with
+    # ; && || | and 2>/dev/null) passes.
     shipcrew_workflows_approval:
       type: function
       on: [tool_call]
@@ -118,7 +119,7 @@ guardrails:
                 event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
                 && has(event.data.arguments.command)
                 && event.data.arguments.command.matches(r'\.github/workflows')
-                && !event.data.arguments.command.matches(r'^\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b[^;&|>]*$')
+                && !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
               )
             )
             ? {"result": "ASK"}

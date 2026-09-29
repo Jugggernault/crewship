@@ -147,6 +147,24 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ),
     ("sed -i workflow", *_bash("sed -i 's/npm/pnpm/' .github/workflows/ci.yml"), {"*": "ASK"}),
     ("cat workflow", *_bash("cat .github/workflows/ci.yml"), {"*": "ALLOW"}),
+    (
+        "chained read of workflows",
+        *_bash(
+            "cat src/calc.py; ls -a; ls .github/workflows 2>/dev/null"
+            " && cat .github/workflows/*.yml"
+        ),
+        {"*": "ALLOW"},
+    ),
+    (
+        "redirect into workflow",
+        *_bash("cat ci.yml > .github/workflows/ci.yml"),
+        {"*": "ASK"},
+    ),
+    (
+        "read then write workflow",
+        *_bash("ls .github/workflows && sed -i 's/a/b/' .github/workflows/ci.yml"),
+        {"*": "ASK"},
+    ),
     # no browser downloads
     ("playwright install", *_bash("npx playwright install chromium"), {"*": "DENY"}),
     ("playwright install deps", *_bash("pnpm exec playwright install --with-deps"), {"*": "DENY"}),
