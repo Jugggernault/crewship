@@ -293,9 +293,8 @@ def _check_conventions(name: str, spec: AgentSpec, errors: list[str]) -> None:
         errors.append("a model is pinned; bundles must run on the configured Claude provider")
     skills = {s.name for s in spec.skills}
     if skills != BUNDLED_SKILLS.get(name, set()):
-        errors.append(
-            f"bundled skills: expected {sorted(BUNDLED_SKILLS.get(name, set()))}, got {sorted(skills)}"
-        )
+        expected = sorted(BUNDLED_SKILLS.get(name, set()))
+        errors.append(f"bundled skills: expected {expected}, got {sorted(skills)}")
     if name == ORCHESTRATOR:
         if not spec.spawn:
             errors.append("orchestrator must set spawn: true")
