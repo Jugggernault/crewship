@@ -1,15 +1,17 @@
-# Read-only shell allowlist (planner): inspection only. No tests, no
-# git writes, no redirection into files except /dev/null and /tmp. Anything
-# else asks.
+# Reviewer shell allowlist: read-only inspection plus the project's test
+# runners, so a review can re-run the suite without an approval card. No git
+# writes, no installs, no redirection into files except /dev/null and /tmp.
+# Anything else asks.
 shipcrew_shell_allowlist:
   type: function
   on: [tool_call]
   function:
     path: omnigent.shipcrew.policies.shell_allowlist
     arguments:
-      role: read-only
+      role: reviewer
       shell_writes: false
       reason: A human approves or denies it on the approval card.
       allow:
         # @include allowlists/read_only
         # @include allowlists/git_read
+        # @include allowlists/test_runners

@@ -1,0 +1,16 @@
+# Test runners only (the reviewer re-runs the suite on the diff it reviews).
+# No installs, builds, formatters or `npm run *`: those stay with the builders.
+- "npm test"
+- "npm t"
+- "pnpm test"
+- "yarn test"
+- "node --test"
+- "npx vitest run"
+- "vitest run"
+- "npx jest"
+- "jest"
+- "pytest"
+- "python -m pytest"
+- "python3 -m pytest"
+- ".venv/bin/pytest"
+- "uv run pytest"

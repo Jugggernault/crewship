@@ -21,7 +21,7 @@ provider configured with `omnigent setup`.
 | `designer` | `claude-native` | `shipcrew:design-lock`, `impeccable` | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `scaffolder` | `claude-native` | `vercel:nextjs`, `vercel:shadcn`, `vercel:vercel-storage`, `shipcrew:design-lock` | scaffolder allowlist (builder + generators, dependency changes), owned paths | `PASS` / `FAIL` |
 | `developer` | `claude-native` | `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `shipcrew:design-lock`, `vercel:nextjs`, `vercel:shadcn` | builder allowlist, owned paths | `PASS` / `FAIL` |
-| `reviewer` | `claude-native`, a fresh session each round | `code-review`, `security-review`, `shipcrew:design-lock` | read-only shell allowlist; read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
+| `reviewer` | `claude-native`, a fresh session each round | `code-review`, `security-review`, `shipcrew:design-lock` | read-only shell allowlist plus test runners; read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
 | `integrator` | `claude-native` | bundled: `resolve-conflicts` | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `qa` | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | qa allowlist (read, test, run the app, curl localhost; no shell writes); writes only `.shipcrew/qa.json` | `PASS` / `FAIL: <n> failures` |
 | `security` | `claude-native` | `security-review`, chrome-devtools MCP | security allowlist (builder + run the app, curl localhost), owned paths | `PASS` / `FAIL` |
@@ -78,7 +78,8 @@ is expanded by `build_agents.py`:
 | scaffolder | builder + `scaffold` (create-next-app, shadcn, drizzle-kit, `npm install <pkg>`) |
 | security | builder + `run_app` |
 | qa | `read_only`, `git_read`, `dev_tools`, `run_app`; `shell_writes: false` |
-| read-only (reviewer, planner) | `read_only`, `git_read`; `shell_writes: false` |
+| read-only (planner) | `read_only`, `git_read`; `shell_writes: false` |
+| reviewer | `read_only`, `git_read`, `test_runners` (npm test, node --test, vitest run, jest, pytest); `shell_writes: false` |
 | devops | `read_only`, `git_read`, `vercel_read`; `shell_writes: false` |
 
 The groups:

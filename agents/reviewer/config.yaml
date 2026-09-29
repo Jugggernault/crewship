@@ -34,7 +34,7 @@ os_env:
   sandbox:
     type: none
 
-# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_readonly read_only
+# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_reviewer read_only
 # GENERATED from agents/_shared/policies/*.yaml by scripts/build_agents.py.
 guardrails:
   ask_timeout: 86400
@@ -150,16 +150,17 @@ guardrails:
             && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
-    # Read-only shell allowlist (reviewer, planner): inspection only. No tests, no
-    # git writes, no redirection into files except /dev/null and /tmp. Anything
-    # else asks.
+    # Reviewer shell allowlist: read-only inspection plus the project's test
+    # runners, so a review can re-run the suite without an approval card. No git
+    # writes, no installs, no redirection into files except /dev/null and /tmp.
+    # Anything else asks.
     shipcrew_shell_allowlist:
       type: function
       on: [tool_call]
       function:
         path: omnigent.shipcrew.policies.shell_allowlist
         arguments:
-          role: read-only
+          role: reviewer
           shell_writes: false
           reason: A human approves or denies it on the approval card.
           allow:
@@ -266,6 +267,22 @@ guardrails:
             - "git branch --merged"
             - "git config --get"
             - "git config --get-all"
+            # Test runners only (the reviewer re-runs the suite on the diff it reviews).
+            # No installs, builds, formatters or `npm run *`: those stay with the builders.
+            - "npm test"
+            - "npm t"
+            - "pnpm test"
+            - "yarn test"
+            - "node --test"
+            - "npx vitest run"
+            - "vitest run"
+            - "npx jest"
+            - "jest"
+            - "pytest"
+            - "python -m pytest"
+            - "python3 -m pytest"
+            - ".venv/bin/pytest"
+            - "uv run pytest"
     # Report-only: every file write/edit tool is refused (reads and shell still work).
     read_only_os:
       type: function

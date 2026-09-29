@@ -141,7 +141,7 @@ guardrails:
             && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
-    # Read-only shell allowlist (reviewer, planner): inspection only. No tests, no
+    # Read-only shell allowlist (planner): inspection only. No tests, no
     # git writes, no redirection into files except /dev/null and /tmp. Anything
     # else asks.
     shipcrew_shell_allowlist:

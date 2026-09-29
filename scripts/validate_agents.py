@@ -82,6 +82,7 @@ BRANCH = "shipcrew/1a2b3c4d-cart"  # shipcrew/<first 8 chars of the task id>-<sl
 BUILDERS = ("builder", "scaffolder", "security")  # owned paths + git/file writes
 RUNNERS = (*BUILDERS, "qa")  # run tests, linters, builds
 READERS = ("reviewer", "devops", "planner")  # read-only shell
+TESTERS = (*RUNNERS, "reviewer")  # may re-run the test suite
 
 
 def _bash(cmd: str) -> tuple[str, dict[str, str]]:
@@ -153,7 +154,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     (
         "local git + tests",
         *_bash("git status && git diff origin/main...HEAD && npm test"),
-        _only(RUNNERS),
+        _only(TESTERS),
     ),
     # polly's catastrophic set
     ("rm -rf /", *_bash("rm -rf /"), {"*": "DENY"}),
@@ -247,17 +248,17 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         _only(RUNNERS),
     ),
     # shell allowlists: allowlisted commands run with no prompt, the rest ASK
-    ("npm test", *_bash("npm test"), _only(RUNNERS)),
-    ("npm test piped", *_bash("npm test 2>&1 | tail -40"), _only(RUNNERS)),
+    ("npm test", *_bash("npm test"), _only(TESTERS)),
+    ("npm test piped", *_bash("npm test 2>&1 | tail -40"), _only(TESTERS)),
     ("npm ci", *_bash("npm ci --prefer-offline --no-audit --no-fund"), _only(RUNNERS)),
-    ("vitest", *_bash("npx vitest run src/cart.test.ts"), _only(RUNNERS)),
-    ("pytest", *_bash("uv run pytest -q tests/"), _only(RUNNERS)),
+    ("vitest", *_bash("npx vitest run src/cart.test.ts"), _only(TESTERS)),
+    ("pytest", *_bash("uv run pytest -q tests/"), _only(TESTERS)),
     (
         "lint typecheck build",
         *_bash("npm run lint && npm run typecheck && npm run build"),
         _only(RUNNERS),
     ),
-    ("timeout wrapper", *_bash("timeout 300 npm test"), _only(RUNNERS)),
+    ("timeout wrapper", *_bash("timeout 300 npm test"), _only(TESTERS)),
     ("design lint", *_bash("npx -y @google/design.md lint DESIGN.md"), _only(RUNNERS)),
     ("git read chain", *_bash("git --no-pager log --oneline -5 && git diff --stat"), {"*": "ALLOW"}),
     (
@@ -351,7 +352,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("cd then write outside", *_bash("cd lib && touch x.ts"), _only(())),
     ("git mv out of owned", *_bash("git mv app/a.ts lib/a.ts"), _only(())),
     ("cp into owned", *_bash("cp lib/db.ts app/cart/db-copy.ts"), _only(BUILDERS)),
-    ("log to /tmp", *_bash("npm test > /tmp/test.log 2>&1"), _only(RUNNERS)),
+    ("log to /tmp", *_bash("npm test > /tmp/test.log 2>&1"), _only(TESTERS)),
     # orchestrator dispatch hygiene
     (
         "dispatch without purpose",
