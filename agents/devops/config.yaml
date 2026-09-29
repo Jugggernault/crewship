@@ -1,7 +1,7 @@
 spec_version: 1
 name: devops
 description: >-
-  shipcrew release engineer: checks the Vercel production deployment of main; writes only .shipcrew/deploy.json, changes no code.
+  shipcrew release engineer: ships a merged mission (vercel link + vercel deploy --prod from a fresh worktree of main, final line DEPLOYED: <url>); changes no code.
 
 # Code-writing / tool-heavy role: the real Claude Code CLI (claude-native), so
 # the human can open its terminal from the board and take over, and it sees
@@ -153,9 +153,10 @@ guardrails:
             && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
-    # Devops shell allowlist: read-only shell, git reads and Vercel reads.
-    # `vercel link` / `git connect` / deploys / `env pull` ask. No redirection into
-    # files except /dev/null and /tmp.
+    # Devops shell allowlist: read-only shell, git reads, Vercel reads, and the ship
+    # stage's exact `vercel link --yes --project <name>` / `vercel deploy --prod --yes`
+    # plus curl to *.vercel.app. Every other vercel command (env, domains, git
+    # connect, remove, ...) asks. No redirection into files except /dev/null and /tmp.
     shipcrew_shell_allowlist:
       type: function
       on: [tool_call]
@@ -269,25 +270,20 @@ guardrails:
             - "git branch --merged"
             - "git config --get"
             - "git config --get-all"
-            # Vercel reads. Linking, connecting, deploying and env pulls ask.
+            # Vercel reads only (the global `vercel` CLI, never an `npx` download).
+            # `env`, `domains`, `alias`, `project`, `git connect`, `remove` ... ask.
+            - "vercel whoami $"
             - "vercel ls"
             - "vercel list"
             - "vercel inspect"
-            - "vercel whoami"
-            - "vercel project ls"
-            - "vercel project list"
-            - "vercel projects ls"
             - "vercel logs"
-            - "vercel env ls"
-            - "vercel domains ls"
-            - "vercel alias ls"
-            - "npx vercel ls"
-            - "npx vercel list"
-            - "npx vercel inspect"
-            - "npx vercel whoami"
-            - "npx vercel project ls"
-            - "npx vercel logs"
-            - "npx vercel env ls"
+            # The ship stage, exactly: link the worktree to the repo's project, deploy
+            # production, check the deployment answers. Any other form of these asks.
+            - 're:^vercel link --yes --project [a-z0-9][a-z0-9._-]{0,99}$'
+            - 're:^vercel deploy --prod --yes$'
+            # curl to a *.vercel.app deployment: GET/HEAD, output only to /dev/null, no
+            # data, no method, no headers, no config file.
+            - 're:^curl( -[sSILfv]+| --(head|silent|show-error|location|fail|verbose)| -o /dev/null| (-m|--max-time|--connect-timeout) [0-9]{1,3})* https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.vercel\.app(/[^ ]*)?$'
     # The devops writes exactly one file: .shipcrew/deploy.json. Any other write/edit is refused.
     shipcrew_write_only:
       type: function

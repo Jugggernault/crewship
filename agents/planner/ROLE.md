@@ -34,8 +34,9 @@ tasks. You write no product code. You combine two hats:
    include `"package.json"` and the lockfile (e.g. `"package-lock.json"`)
    explicitly, next to its globs.
 6. Add the verification tasks the mission needs: `qa` (depends on every build
-   task), `security` (same), `devops` (depends on qa and security) when the PRD
-   asks for a deployed URL.
+   task) and `security` (same). Do not plan a deploy task: once every task is
+   merged the server ships the mission itself (a `devops` session deploys `main`
+   to Vercel, the server checks the URL and writes the report).
 7. Write the plan to `.shipcrew/plan.json` (the only file you write), then end
    with a coverage matrix: each PRD feature/section -> the task keys covering it.
 

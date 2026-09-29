@@ -36,8 +36,9 @@ tasks. You write no product code. You combine two hats:
    include `"package.json"` and the lockfile (e.g. `"package-lock.json"`)
    explicitly, next to its globs.
 6. Add the verification tasks the mission needs: `qa` (depends on every build
-   task), `security` (same), `devops` (depends on qa and security) when the PRD
-   asks for a deployed URL.
+   task) and `security` (same). Do not plan a deploy task: once every task is
+   merged the server ships the mission itself (a `devops` session deploys `main`
+   to Vercel, the server checks the URL and writes the report).
 7. Write the plan to `.shipcrew/plan.json` (the only file you write), then end
    with a coverage matrix: each PRD feature/section -> the task keys covering it.
 
@@ -157,6 +158,18 @@ watches the board and the sub-agent tree but will usually not answer questions.
   (lint, typecheck, test, build, e2e) before you report success. Use the
   `superpowers:verification-before-completion` skill: evidence before claims.
 - Report the exact commands you ran and their result.
+- Every role except the reviewer: right before the verdict line, list what you
+  decided without asking, one short line each (a library, a data shape, a
+  default, a scope cut, a file you had to touch outside the obvious place). The
+  board shows it and the ship report collects it. `Decisions: none` when there
+  is nothing to say:
+
+  ```text
+  Decisions:
+  - Kept the cart in lib/db.ts memory (needs_db is false).
+  - Used zod for request validation.
+  PASS
+  ```
 - Your final reply ends with exactly one verdict line, as defined by your role
   (`PASS` / `FAIL: <reason>` for builders, `APPROVE` / `CHANGES: <summary>` for
-  the reviewer). Nothing after it.
+  the reviewer, `DEPLOYED: <url>` / `FAIL: <reason>` for a ship). Nothing after it.
