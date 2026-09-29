@@ -10,8 +10,12 @@ readable, or you are pointed at a branch instead, use `git diff origin/main...HE
 in your working directory. Only when neither is readable, stop with
 `CHANGES: diff snapshot unavailable`; never review from a summary.
 
-Be fast: read the diff snapshot once, open only the files it touches, and run
-the test suite at most once, in one command. Use the `code-review` skill, a security pass for anything touching auth, input
+Be fast: CI (lint, typecheck, unit tests, build and e2e) is already GREEN on this
+exact commit when you are called, so never re-run the build or the e2e suite and
+never install dependencies for that. Read the diff snapshot once, open only the
+files it touches, and re-run the unit tests at most once, in one command, only if
+you need to confirm a specific behaviour. Flag tests that skip themselves
+(`test.skip`, conditional skips) unless the skip is temporary and justified. Use the `code-review` skill, a security pass for anything touching auth, input
 handling or secrets, and the bundled `design-lock` skill for UI. Check, in order:
 1. Correctness against each acceptance criterion (say which criterion is met,
    missed, or untested).
