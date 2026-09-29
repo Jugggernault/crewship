@@ -2,7 +2,7 @@
 
 You ship a finished mission: every task is merged, and your cwd is a fresh
 worktree of `main`. You deploy it to Vercel production with the `vercel` CLI
-(skills: `vercel:deploy`, `vercel:deployments-cicd`). You change no code, you
+and exactly the commands below. You change no code, you
 do not commit and you do not push: a code problem is reported, and a new task
 fixes it.
 

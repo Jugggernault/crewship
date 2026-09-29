@@ -79,10 +79,18 @@ MCP_SERVERS: dict[str, set[str]] = {
     "devops": set(),  # deploys with the vercel CLI
     "shipcrew": set(),
 }
+# Sessions load no host-user plugins (setting_sources: project,local), so a
+# skill a role needs ships in its bundle (design-lock: a symlink to skills/).
 BUNDLED_SKILLS = {
+    "designer": {"design-lock"},
+    "scaffolder": {"design-lock"},
+    "developer": {"design-lock"},
+    "reviewer": {"design-lock"},
+    "qa": {"design-lock"},
     "integrator": {"resolve-conflicts"},
     ORCHESTRATOR: {"plan", "dispatch", "verify"},
 }
+SETTING_SOURCES = ["project", "local"]
 
 # ── Guardrail behaviour matrix ──────────────────────────────────────────────
 # (label, tool name, arguments, {profile: expected verdict}); "*" = every profile
@@ -481,6 +489,60 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ),
     ("git stash (verifier)", *_bash("git stash"), _only(())),
     ("log to /tmp", *_bash("npm test > /tmp/test.log 2>&1"), _only(TESTERS)),
+    # live run approvals that must not come back (round 5): all ALLOW
+    ("exit code echo", *_bash("npx -y @google/design.md lint DESIGN.md; echo EXIT=$?"), _only(RUNNERS)),
+    ("echo vetted vars", *_bash("echo CHROMIUM=$CHROMIUM_PATH PORT=$PORT"), {"*": "ALLOW"}),
+    (
+        "shell var then read",
+        *_bash("S=/tmp/sc/scratchpad/app; cat $S/package.json"),
+        {"*": "ALLOW"},
+    ),
+    (
+        "background install, reads, wait",  # multi-line, trailing &, escaped [id]
+        *_bash(
+            "npm ci --prefer-offline --no-audit --no-fund 2>&1 | tail -3 &\n"
+            "cat DESIGN.md app/api/polls/\\[id\\]/route.ts; "
+            'grep -n "export\\|seed" lib/db.ts | head -40; wait'
+        ),
+        _only(RUNNERS),
+    ),
+    (
+        "default in a vetted env prefix",
+        *_bash("PORT=${PORT:-3000} CI=1 npx playwright test"),
+        _only(RUNNERS),
+    ),
+    # ... and the protections behind them
+    ("expansion into a banned option", *_bash("X=--output=f; git diff $X"), _only(())),
+    ("echo a secret var", *_bash("echo $DATABASE_URL"), _only(())),
+    ("unassigned var in a read", *_bash("cat $SECRET_FILE"), _only(())),
+    ("PATH assignment", *_bash("PATH=/tmp/evil; cat README.md"), _only(())),
+    ("shell var then a runner", *_bash("S=/tmp/x; npm test"), _only(())),
+    ("expansion in a runner", *_bash("npm test -- $ARGS"), _only(())),
+    ("printf -v", *_bash("printf -v PATH %s /tmp/evil; npm test"), _only(())),
+    ("rg --pre", *_bash("rg --pre /tmp/x.sh TODO"), _only(())),
+    ("git diff-tree --output", *_bash("git diff-tree --output=/tmp/x -p HEAD"), _only(())),
+    ("redirect to a var", *_bash("echo x > $OUT"), _no_verify(_only(()))),
+    ("npm install -D, package.json not owned", *_bash("npm install -D vitest"), _no_verify(_only(()))),
+    ("sed -i outside owned", *_bash("sed -i 's/a/b/' src/other.ts"), _no_verify(_only(()))),
+    ("sed -i owned", *_bash("sed -i 's|a|b|g' app/page.tsx"), _no_verify(_only(BUILDERS))),
+    ("sed -i w flag", *_bash("sed -i 's/a/b/w /tmp/x' app/page.tsx"), _no_verify(_only(()))),
+    ("sed -i e command", *_bash("sed -i '1e touch /tmp/x' app/page.tsx"), _no_verify(_only(()))),
+    ("perl -pi owned", *_bash("perl -pi -e 's/a/b/g' app/page.tsx"), _no_verify(_only(BUILDERS))),
+    (
+        "perl -pi code",
+        *_bash("perl -pi -e 's/a/@{[system(\"id\")]}/' app/page.tsx"),
+        _no_verify(_only(())),
+    ),
+    ("perl -e code", *_bash("perl -pi -e 'system(1)' app/page.tsx"), _no_verify(_only(()))),
+    # verify roles add tests, never remove another task's (seen live: `git rm` of a
+    # "redundant" spec). No repo at REPO_PATH here: a removal that cannot be
+    # checked against origin/main is refused too.
+    ("verify git rm of a test", *_bash("git rm -q e2e/home-page.spec.ts"), _no_verify(_only(()))),
+    ("verify rm of a test", *_bash("rm e2e/cart.spec.ts"), _no_verify(_only(BUILDERS))),
+    ("verify mv of a test", *_bash("mv e2e/cart.spec.ts e2e/old.spec.ts"), _no_verify(_only(()))),
+    # (a `>` over a test is refused only when origin/main has it: tests/shipcrew/test_test_writes.py)
+    ("verify rewrites a test, no base", *_bash("echo '' > e2e/cart.spec.ts"), _only(COMMITTERS)),
+    ("verify appends to a test", *_bash("echo '// more' >> e2e/cart.spec.ts"), _only(COMMITTERS)),
     # orchestrator dispatch hygiene
     (
         "dispatch without purpose",
@@ -499,6 +561,56 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         "sys_session_send",
         {"agent": "qa", "title": "qa-x", "args": {"purpose": "verify", "input": "x"}},
         {"*": "ALLOW"},
+    ),
+]
+
+# The same matrix under a Foundation task contract: it owns package.json by
+# name (and so its lockfiles) and everything else, like a scaffold task. The
+# builders then run the live commands with no approval; the CI workflow stays
+# gated (the server installs it, see omnigent/shipcrew/ci_install.py).
+FOUNDATION_OWNED = ["**", "package.json"]
+CONTRACT_CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
+    (
+        "dev deps install (foundation)",
+        *_bash(
+            "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -D --no-audit --no-fund vitest "
+            '@playwright/test @faker-js/faker 2>&1 | grep -v "^npm warn install" | head -30'
+        ),
+        _no_verify(_only(BUILDERS)),
+    ),
+    ("pnpm add (foundation)", *_bash("pnpm add zod"), _no_verify(_only(BUILDERS))),
+    ("npm install pkg (foundation)", *_bash("npm install lodash"), _no_verify(_only(BUILDERS))),
+    (
+        "rename config, sed package.json, check (foundation)",
+        *_bash(
+            "git mv -f vitest.config.ts vitest.config.mts 2>/dev/null || mv vitest.config.ts "
+            "vitest.config.mts; sed -i 's|\"test\": \"vitest\"|\"test\": \"vitest run\"|' "
+            "package.json; npm run typecheck 2>&1 | tail -5; npm test 2>&1 | grep -E \"warn|Tests\""
+        ),
+        _no_verify(_only(BUILDERS)),
+    ),
+    ("npm install -g (foundation)", *_bash("npm install -g vercel"), _no_verify(_only(()))),
+    (
+        "pnpm add in another package (foundation)",
+        *_bash("pnpm add --filter web zod"),
+        _no_verify(_only(())),
+    ),
+    (
+        "Write CI workflow (foundation)",
+        "Write",
+        {"file_path": f"{REPO_PATH}/.github/workflows/ci.yml", "content": "x"},
+        _write_verdicts("ASK", orchestrator="ASK"),
+    ),
+    (
+        "sed -i CI workflow (foundation)",
+        *_bash("sed -i 's/npm/pnpm/' .github/workflows/ci.yml"),
+        _no_verify({"*": "ASK"}),
+    ),
+    (
+        "Edit package.json (foundation)",
+        "Edit",
+        {"file_path": f"{REPO_PATH}/package.json", "old_string": "a", "new_string": "b"},
+        _write_verdicts("ALLOW"),
     ),
 ]
 
@@ -549,7 +661,7 @@ def _verdict(policies: dict[str, Callable[..., Any]], tool: str, args: dict[str,
     return worst
 
 
-def _with_task_contract(bundle: Path) -> AgentSpec:
+def _with_task_contract(bundle: Path, owned: list[str] = TASK_OWNED) -> AgentSpec:
     """The bundle as the board starts it: task contract injected by the server code."""
     from omnigent.shipcrew.sessions import inject_task_contract
 
@@ -558,7 +670,7 @@ def _with_task_contract(bundle: Path) -> AgentSpec:
         config = copy / "config.yaml"
         config.write_text(
             inject_task_contract(
-                config.read_text(encoding="utf-8"), owned_paths=TASK_OWNED, root=REPO_PATH
+                config.read_text(encoding="utf-8"), owned_paths=owned, root=REPO_PATH
             ),
             encoding="utf-8",
         )
@@ -599,6 +711,14 @@ def _check_guardrails(name: str, spec: AgentSpec, errors: list[str]) -> int:
         got = _verdict(policies, tool, args)
         if got != want:
             errors.append(f"guardrail {label!r} ({tool} {args}): expected {want}, got {got}")
+    if profile in COMMITTERS:
+        spec = _with_task_contract(AGENTS / name, FOUNDATION_OWNED)
+        policies = _build_policies(spec)
+    for label, tool, args, expected in CONTRACT_CASES:
+        want = expected.get(profile, expected["*"])
+        got = _verdict(policies, tool, args)
+        if got != want:
+            errors.append(f"guardrail {label!r} ({tool} {args}): expected {want}, got {got}")
     if profile == "orchestrator":
         # capacity gate: the 7th dispatch in one turn is refused
         spawn = _build_policies(spec)[
@@ -608,7 +728,7 @@ def _check_guardrails(name: str, spec: AgentSpec, errors: list[str]) -> int:
         results = [spawn(send)["result"] for _ in range(7)]
         if results != ["ALLOW"] * 6 + ["DENY"]:
             errors.append(f"spawn_bounds: expected 6 ALLOW then DENY, got {results}")
-    return len(CASES)
+    return len(CASES) + len(CONTRACT_CASES)
 
 
 def _upload_round_trip(bundle: Path) -> AgentSpec:
@@ -700,6 +820,10 @@ def _check_mcp(
     want = MCP_SERVERS[name]
     if not strict_mcp_enabled(config):
         errors.append("strict_mcp_config must be true (no host MCP servers)")
+    from omnigent.shipcrew.launch_args import setting_sources
+
+    if setting_sources(config) != SETTING_SOURCES:
+        errors.append(f"setting_sources must be {SETTING_SOURCES} (no host-user plugins/hooks)")
     try:
         servers = set(mcp_server_names(config))
         claude_args = claude_mcp_launch_args(config)
@@ -722,6 +846,9 @@ def _check_mcp(
         launch = _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) or []
         if "--strict-mcp-config" not in launch:
             errors.append(f"claude launch args lack --strict-mcp-config: {launch}")
+        at = launch.index("--setting-sources") if "--setting-sources" in launch else -1
+        if at < 0 or launch[at + 1 : at + 2] != [",".join(SETTING_SOURCES)]:
+            errors.append(f"claude launch args lack --setting-sources project,local: {launch}")
         if claude_args and launch[-len(claude_args) :] != claude_args:
             errors.append(f"claude launch args lack the role MCP config: {launch}")
     else:
@@ -731,6 +858,10 @@ def _check_mcp(
 
         if _build_claude_sdk_spawn_env(spec).get("HARNESS_CLAUDE_SDK_STRICT_MCP_CONFIG") != "1":
             errors.append("claude-sdk spawn env lacks HARNESS_CLAUDE_SDK_STRICT_MCP_CONFIG=1")
+        if _build_claude_sdk_spawn_env(spec).get("HARNESS_CLAUDE_SDK_SETTING_SOURCES") != (
+            ",".join(SETTING_SOURCES)
+        ):
+            errors.append("claude-sdk spawn env lacks HARNESS_CLAUDE_SDK_SETTING_SOURCES")
 
 
 def main() -> int:

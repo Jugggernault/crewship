@@ -22,9 +22,13 @@ watches the board and the sub-agent tree but will usually not answer questions.
 - Change only files matching your `owned_paths`. New files inside them are fine.
   Build output, caches and `/tmp` are always writable.
 - Policy-enforced: a write outside `owned_paths` (Write/Edit, shell redirection,
-  `cp`/`mv`/`rm`, `git mv`, `prettier --write .` ...) pauses on an approval
-  card, and so does any change to `package.json` or a lockfile (including
-  `npm install <pkg>`) unless your task owns that file by name.
+  `cp`/`mv`/`rm`, `git mv`, `sed -i`, `prettier --write .` ...) pauses on an
+  approval card, and so does any change to `package.json` or a lockfile
+  (including `pnpm add <pkg>`) unless your task owns `package.json` by name
+  (owning it owns the lockfile next to it).
+- Dependencies: the Foundation task installs every package the crew needs,
+  the test toolchain included. Any other task that finds it needs a new
+  package says so in its `Decisions:` list instead of racing on the lockfile.
 - Shared files (root layout, navigation, `lib/db.ts`, shared components,
   `package.json`, lockfiles, config) get minimal, additive edits only, and only
   when the task needs them. Say which shared files you touched in your reply.
@@ -37,26 +41,39 @@ watches the board and the sub-agent tree but will usually not answer questions.
 - No force-push, no `rm -rf` outside the worktree, no hard reset to a remote ref.
 - Do not read or print `.env`, `.env.local` or any other `.env*` secret file
   (`.env.example` is fine). Need a variable? Use its name, never its value.
-- Editing `.github/workflows/**` needs human approval: the call pauses on an
-  approval card. Only do it when the task explicitly requires it.
+- CI: the server installs `.github/workflows/ci.yml` on `main` before the first
+  task starts. Never write or edit `.github/workflows/**` (it needs a human's
+  approval): make the `package.json` scripts match it instead (`lint`,
+  `typecheck`, `test`, `build`, `e2e`, each run only when defined).
 - Never run `playwright install` or any other large browser/toolchain download.
   A browser is already installed at `$CHROMIUM_PATH` (default `/usr/bin/chromium`).
   Playwright must use it: `launchOptions.executablePath: process.env.CHROMIUM_PATH`.
 - Tools are already installed and on PATH. Install dependencies at most once
   per task, and only when `node_modules` is missing (the board seeds a new
-  worktree's `node_modules` from the main checkout when the lockfile matches):
-  `pnpm install --frozen-lockfile --prefer-offline` (pnpm repos, shared store)
-  or `npm ci --prefer-offline --no-audit --no-fund` (npm repos).
+  worktree's `node_modules` from the main checkout when the lockfile matches).
+  Use the repo's package manager, the one its lockfile names:
+  `pnpm install --frozen-lockfile --prefer-offline` (`pnpm-lock.yaml`),
+  `npm ci --prefer-offline --no-audit --no-fund` (`package-lock.json`),
+  `yarn install --frozen-lockfile` (`yarn.lock`). Never `npm install` in a
+  pnpm repo.
 - Your role has a shell allowlist (package scripts, test runners, linters,
   typecheckers, builds, local git, read-only shell): those run with no prompt.
   Any other command pauses on an approval card until a human answers, so stay
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- Plain shell: never append `; echo EXIT=$?` (the tool already reports the
+  exit code) and do not introduce shell variables (`S=/path; cat $S/x`): write
+  the paths out. A `$VAR` passes only in read-only commands (and as
+  `PORT=${PORT:-3000}` in front of a command). Run Playwright with the repo's
+  own `playwright.config.*` (it reads `PORT` and `CHROMIUM_PATH`), never a
+  config copied to `/tmp`.
 - MCP servers are scoped per role: your session has only the ones your role
   needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
-  omnigent's own tools. The user's other connectors (mail, calendar, design
-  and deploy apps, ...) are not available: do not look for them or mention them.
+  omnigent's own tools. The host user's settings, plugins, hooks, skills and
+  connectors (mail, calendar, design and deploy apps, ...) are not loaded:
+  your skills are the ones your role bundles (e.g. `design-lock`) plus Claude
+  Code's built-in ones. Do not look for others or mention them.
 
 ## Speed (every turn costs the whole crew time and money)
 - Tests first, the fast kind: unit tests for logic and API routes. Call route
@@ -77,11 +94,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn
   components through the shadcn MCP tools or `npx shadcn add`, never by pasting
-  component source by hand. Skills: `vercel:nextjs`, `vercel:shadcn`.
+  component source by hand.
 - mobile: Expo (React Native) + TypeScript + NativeWind + React Native Reusables
   (https://reactnativereusables.com/docs/catalogs); Jest + RNTL; e2e through
   Expo web + Playwright.
-- Design: `DESIGN.md` at the repo root is law. Use the `shipcrew:design-lock`
+- Design: `DESIGN.md` at the repo root is law. Use the bundled `design-lock`
   skill on every UI change: tokens only, no ad-hoc colors, fonts, radii or spacing.
 - Your dev server port is `$PORT` (default 3000). Never assume 3000 is free.
 
@@ -99,8 +116,8 @@ watches the board and the sub-agent tree but will usually not answer questions.
 
 ## Definition of done
 - Every command the CI workflow (`.github/workflows/ci.yml`) runs passes locally
-  (lint, typecheck, test, build, e2e) before you report success. Use the
-  `superpowers:verification-before-completion` skill: evidence before claims.
+  (lint, typecheck, test, build, e2e) before you report success: evidence
+  before claims.
 - Report the exact commands you ran and their result.
 - Every role except the reviewer: right before the verdict line, list what you
   decided without asking, one short line each (a library, a data shape, a

@@ -1,12 +1,8 @@
 # Foundation only: generators and dependency changes. Changing package.json /
-# the lockfile still needs the Foundation task to own them by name.
-- "npm install"
-- "npm i"
+# the lockfile still needs the Foundation task to own them by name. Installs and
+# adds are the deps group (shared with the builders).
 - "npm uninstall"
-- "pnpm add"
-- "pnpm install"
 - "pnpm remove"
-- "yarn add"
 - "yarn remove"
 - "npx create-next-app"
 - "npx create-next-app@*"

@@ -11,8 +11,8 @@ in your working directory. Only when neither is readable, stop with
 `CHANGES: diff snapshot unavailable`; never review from a summary.
 
 Be fast: read the diff snapshot once, open only the files it touches, and run
-the test suite at most once, in one command. Use the `code-review` skill, `security-review` for anything touching auth, input
-handling or secrets, and `shipcrew:design-lock` for UI. Check, in order:
+the test suite at most once, in one command. Use the `code-review` skill, a security pass for anything touching auth, input
+handling or secrets, and the bundled `design-lock` skill for UI. Check, in order:
 1. Correctness against each acceptance criterion (say which criterion is met,
    missed, or untested).
 2. Broken shared contracts: `lib/db.ts` API, API route shapes, shared

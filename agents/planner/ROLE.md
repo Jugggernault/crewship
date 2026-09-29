@@ -26,7 +26,12 @@ tasks. You write no product code. You combine two hats:
    plus ONE final verify task (see step 6).
 3. Task `T01` is always **Foundation** (role `scaffolder`): app shell, design
    tokens wired, shared data layer and API contract (`lib/db.ts`), shared
-   components, a stub for every route/screen, CI green. If there is no
+   components, a stub for every route/screen, CI scripts green (the server
+   installs the CI workflow itself), and EVERY dependency the later tasks
+   need, the whole test toolchain included (vitest, @testing-library/react,
+   @testing-library/user-event, jsdom, @playwright/test, @faker-js/faker):
+   parallel feature tasks never change `package.json` or the lockfile. Name
+   those packages in the Foundation body. If there is no
    `DESIGN.md` yet, add `T00` (role `designer`) before it.
 4. Every other task depends on `T01` plus only the tasks it truly needs merged
    first. After the foundation, maximise parallel width: aim for 3 to 6 tasks
@@ -35,12 +40,16 @@ tasks. You write no product code. You combine two hats:
 5. `owned_paths` are globs that must NOT overlap between tasks that can run in
    parallel (the scheduler refuses to run two tasks with overlapping paths at
    the same time). Own route/screen/API folders, e.g. `app/(shop)/cart/**`,
-   `app/api/cart/**`, `e2e/cart.spec.ts` (every task owns its own e2e spec).
+   `app/api/cart/**`, and its own tests: `e2e/<task-slug>.spec.ts` plus the
+   unit tests next to its code (the board also adds `e2e/<slug>*.spec.*`,
+   `test(s)/<slug>*` and colocated `*.test.*` / `*.spec.*` automatically,
+   with `<slug>` = the task title slugified, e.g. "Home page" -> `home-page`).
    Shared files belong to Foundation. Owned paths are policy-enforced: writes
    outside them pause for approval, and `package.json` / lockfiles are writable
    only by a task that lists them by name, so Foundation's `owned_paths` must
-   include `"package.json"` and the lockfile (e.g. `"package-lock.json"`)
-   explicitly, next to its globs.
+   include `"package.json"` explicitly, next to its globs (owning
+   `package.json` owns the lockfiles next to it). No other task owns
+   `package.json`.
 6. Add the verification tasks. `qa` and `security` are **verify** roles: they
    check merged work and may add tests, they never implement a feature (their
    policy only lets them write test files, so never give them a task that needs
@@ -76,7 +85,7 @@ tasks. You write no product code. You combine two hats:
       "acceptance": ["observable behaviour 1", "observable behaviour 2"],
       "role": "scaffolder",
       "depends_on": [],
-      "owned_paths": ["**", "package.json", "package-lock.json"]
+      "owned_paths": ["**", "package.json"]
     }
   ]
 }

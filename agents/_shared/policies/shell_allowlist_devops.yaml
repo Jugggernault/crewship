@@ -11,6 +11,11 @@ shipcrew_shell_allowlist:
       role: devops
       shell_writes: false
       reason: A human approves or denies it on the approval card.
+      # Commands a $VAR / ${VAR} expansion may appear in (the expansion-safe
+      # entries: no !banned option, no glob word; see policies.shell_allowlist).
+      read_only:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
       allow:
         # @include allowlists/read_only
         # @include allowlists/git_read

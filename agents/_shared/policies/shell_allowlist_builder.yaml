@@ -1,7 +1,9 @@
 # Builder shell allowlist (developer, designer, integrator): these commands run
 # with no prompt; any other command, or one with $(..), `..` or a heredoc,
 # pauses on an approval card (Inbox; the board card goes to Intervention).
-# Write targets are judged by shipcrew_owned_paths.
+# Write targets are judged by shipcrew_owned_paths: dependency changes (deps)
+# pass only when the task owns package.json, `sed -i` / `perl -pi` (fs_edit)
+# only on owned files. Chains, pipes, `2>&1` and `$?` are fine when every part is.
 shipcrew_shell_allowlist:
   type: function
   on: [tool_call]
@@ -11,9 +13,16 @@ shipcrew_shell_allowlist:
       role: builder
       shell_writes: true
       reason: A human approves or denies it on the approval card.
+      # Commands a $VAR / ${VAR} expansion may appear in (the expansion-safe
+      # entries: no !banned option, no glob word; see policies.shell_allowlist).
+      read_only:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
       allow:
         # @include allowlists/read_only
         # @include allowlists/git_read
         # @include allowlists/git_write
         # @include allowlists/fs_write
         # @include allowlists/dev_tools
+        # @include allowlists/deps
+        # @include allowlists/fs_edit

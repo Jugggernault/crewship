@@ -5,7 +5,7 @@
 - "head"
 - "tail"
 - "wc"
-- "rg"
+- "rg !--pre*"  # --pre runs a preprocessor command
 - "grep"
 - "egrep"
 - "fgrep"
@@ -17,6 +17,7 @@
 - "yq !-i* !--inplace*"
 - "tree !-o"
 - "sort !-o* !--output*"
+- "uniq"  # `uniq IN OUT` writes OUT: judged as a write
 - "cut"
 - "tr"
 - "diff"
@@ -31,7 +32,7 @@
 - "pwd"
 - "cd"
 - "echo"
-- "printf"
+- "printf !-v*"  # printf -v sets a shell variable
 - "which"
 - "type"
 - "basename"
@@ -40,6 +41,7 @@
 - "readlink"
 - "date"
 - "sleep"
+- "wait"  # for a job started with a trailing `&`
 - "true"
 - "false"
 - "test"
