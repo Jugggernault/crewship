@@ -1,0 +1,24 @@
+# The orchestrator pushes task branches (named explicitly, shipcrew/*) and opens
+# draft PRs, but never pushes the default branch and never merges without a human.
+shipcrew_orchestrator_push_guard:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.policies.builtins.cel.cel_policy
+    arguments:
+      reason: Merging, deleting a repo or cutting a release needs a human.
+      expression: |
+        event.type == "tool_call"
+        && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+        && has(event.data.arguments.command)
+        ? (
+            event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b[^;&|]*[\s:+](main|master|HEAD)(\s|$|[;&|])')
+            ? {"result": "DENY", "reason": "Never push main/master (or HEAD) from the orchestrator: push the shipcrew/<task> branch by name and open a draft PR."}
+            : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
+              && !event.data.arguments.command.matches(r'\bpush\b[^;&|]*\sshipcrew/[A-Za-z0-9._/-]+(\s|$|[;&|])')
+            ? {"result": "DENY", "reason": "Push only task branches, named explicitly: git -C .worktrees/<key> push -u origin shipcrew/<key>-<slug>."}
+            : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+(pr\s+merge|repo\s+delete|release\s+create)\b')
+            ? {"result": "ASK"}
+            : {"result": "ALLOW"}
+          )
+        : {"result": "ALLOW"}

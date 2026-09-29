@@ -1,0 +1,19 @@
+# Workers never publish: the shipcrew orchestrator pushes and runs the PR loop.
+shipcrew_no_remote_writes:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.policies.builtins.cel.cel_policy
+    arguments:
+      reason: Workers may not push or open/merge PRs; the shipcrew orchestrator does that. Commit locally and finish.
+      expression: |
+        event.type == "tool_call"
+        && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+        && has(event.data.arguments.command)
+        && (
+          event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
+          || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+(pr\s+(create|merge|close|reopen|ready)|release\s+create|repo\s+(create|delete|fork))\b')
+          || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+api\b.*(-X|--method)(\s+|=)?(POST|PUT|PATCH|DELETE)\b')
+        )
+        ? {"result": "DENY"}
+        : {"result": "ALLOW"}

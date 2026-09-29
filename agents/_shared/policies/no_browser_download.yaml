@@ -1,0 +1,15 @@
+# A browser is preinstalled at $CHROMIUM_PATH; browser downloads are never needed.
+shipcrew_no_browser_download:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.policies.builtins.cel.cel_policy
+    arguments:
+      reason: Never download browsers. Use the preinstalled one at $CHROMIUM_PATH (launchOptions.executablePath).
+      expression: |
+        event.type == "tool_call"
+        && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+        && has(event.data.arguments.command)
+        && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
+        ? {"result": "DENY"}
+        : {"result": "ALLOW"}

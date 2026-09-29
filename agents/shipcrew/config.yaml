@@ -1,0 +1,194 @@
+spec_version: 1
+name: shipcrew
+description: >-
+  shipcrew mission orchestrator: plans a PRD into a task DAG (depends_on +
+  owned_paths), dispatches each task to a Claude role agent in its own git
+  worktree, and verifies every result with CI gates and a fresh read-only
+  reviewer before pushing the branch as a draft PR. Writes no code itself.
+
+# Beyond the declared role agents (tools.agents), spawn: true registers
+# sys_session_create so the orchestrator can also launch an existing agent by
+# id or a custom bundle via config_path.
+spawn: true
+
+# Orchestrator brain: the Claude Agent SDK (claude-sdk). No model is pinned:
+# it runs on the configured Claude provider (a Claude subscription works).
+executor:
+  type: omnigent
+  config:
+    harness: claude-sdk
+    permission_mode: auto
+
+# ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
+instructions: AGENTS.md
+
+async: true
+cancellable: true
+timers: true
+
+# cwd is the mission repo: the orchestrator manages worktrees, the registry,
+# diff snapshots and CI gates there. Workers run in their own worktrees.
+os_env:
+  type: caller_process
+  cwd: .
+  sandbox:
+    type: none
+
+# Shells for long-running processes (dev servers, log tails). Never for
+# launching agents: all delegation goes through sys_session_send.
+terminals:
+  shell:
+    command: bash
+    allow_cwd_override: true
+    os_env:
+      type: caller_process
+      cwd: .
+      sandbox:
+        type: none
+
+# The role agents. agents/<role> here are symlinks to ../../<role> (the same
+# bundles the board launches as task root sessions); omnigent copies bundles
+# with symlinks dereferenced before packing them.
+tools:
+  agents:
+    - planner
+    - designer
+    - scaffolder
+    - developer
+    - reviewer
+    - integrator
+    - qa
+    - security
+    - devops
+
+# >>> shipcrew-guardrails: blast_radius orchestrator_push_guard no_env_read workflows_approval no_browser_download spawn_bounds purpose_guard
+# GENERATED from agents/_shared/policies/*.yaml by scripts/build_agents.py.
+guardrails:
+  ask_timeout: 86400
+  policies:
+    # Polly's catastrophic DENY set: force-push, rm -rf of / or a system dir,
+    # hard reset to a remote ref. Everything recoverable runs without an ASK
+    # (headless workers cannot answer one), the push ban is shipcrew_no_remote_writes.
+    blast_radius:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.orchestration.blast_radius
+        arguments:
+          gate_pushes: false
+    # The orchestrator pushes task branches (named explicitly, shipcrew/*) and opens
+    # draft PRs, but never pushes the default branch and never merges without a human.
+    shipcrew_orchestrator_push_guard:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Merging, deleting a repo or cutting a release needs a human.
+          expression: |
+            event.type == "tool_call"
+            && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+            && has(event.data.arguments.command)
+            ? (
+                event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b[^;&|]*[\s:+](main|master|HEAD)(\s|$|[;&|])')
+                ? {"result": "DENY", "reason": "Never push main/master (or HEAD) from the orchestrator: push the shipcrew/<task> branch by name and open a draft PR."}
+                : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
+                  && !event.data.arguments.command.matches(r'\bpush\b[^;&|]*\sshipcrew/[A-Za-z0-9._/-]+(\s|$|[;&|])')
+                ? {"result": "DENY", "reason": "Push only task branches, named explicitly: git -C .worktrees/<key> push -u origin shipcrew/<key>-<slug>."}
+                : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+(pr\s+merge|repo\s+delete|release\s+create)\b')
+                ? {"result": "ASK"}
+                : {"result": "ALLOW"}
+              )
+            : {"result": "ALLOW"}
+    # Secrets stay out of the model context. .env.example / .sample / .template are fine.
+    # `vercel env pull` is the one allowed command naming a .env file (it writes it).
+    shipcrew_no_env_read:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Reading .env* secret files is not allowed. Refer to variables by name only.
+          expression: |
+            event.type == "tool_call"
+            && (
+              (
+                event.data.name in ["Read", "Grep", "sys_os_read", "read", "grep"]
+                && (
+                  (has(event.data.arguments.file_path)
+                    && event.data.arguments.file_path.matches(r'(^|/)\.env(\.[^/]*)?$')
+                    && !event.data.arguments.file_path.matches(r'(^|/)\.env\.(example|sample|template|dist)$'))
+                  || (has(event.data.arguments.path)
+                    && event.data.arguments.path.matches(r'(^|/)\.env(\.[^/]*)?$')
+                    && !event.data.arguments.path.matches(r'(^|/)\.env\.(example|sample|template|dist)$'))
+                )
+              )
+              || (
+                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+                && has(event.data.arguments.command)
+                && event.data.arguments.command.matches(r'(^|[\s\x22\x27=<>/:])\.env(\.(local|development|production|test|preview|staging|prod|dev))*($|[\s\x22\x27;|&)>])')
+                && !event.data.arguments.command.matches(r'^\s*(npx\s+)?vercel\s+env\s+pull\b[^;&|]*$')
+              )
+            )
+            ? {"result": "DENY"}
+            : {"result": "ALLOW"}
+    # CI definitions are the merge gate: changing them needs a human (approval card
+    # in the Inbox). Read-only shell (cat, ls, grep, git diff ...) passes.
+    shipcrew_workflows_approval:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Editing .github/workflows/** needs human approval.
+          expression: |
+            event.type == "tool_call"
+            && (
+              (
+                event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
+                && (
+                  (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.github/workflows/'))
+                  || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.github/workflows/'))
+                  || (has(event.data.arguments.notebook_path) && event.data.arguments.notebook_path.matches(r'(^|/)\.github/workflows/'))
+                )
+              )
+              || (
+                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+                && has(event.data.arguments.command)
+                && event.data.arguments.command.matches(r'\.github/workflows')
+                && !event.data.arguments.command.matches(r'^\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b[^;&|>]*$')
+              )
+            )
+            ? {"result": "ASK"}
+            : {"result": "ALLOW"}
+    # A browser is preinstalled at $CHROMIUM_PATH; browser downloads are never needed.
+    shipcrew_no_browser_download:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.policies.builtins.cel.cel_policy
+        arguments:
+          reason: Never download browsers. Use the preinstalled one at $CHROMIUM_PATH (launchOptions.executablePath).
+          expression: |
+            event.type == "tool_call"
+            && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
+            && has(event.data.arguments.command)
+            && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
+            ? {"result": "DENY"}
+            : {"result": "ALLOW"}
+    # Capacity gate: at most 6 worker dispatches per orchestrator turn.
+    spawn_bounds:
+      type: function
+      function:
+        path: omnigent.policies.builtins.orchestration.spawn_bounds
+        arguments:
+          max_dispatches_per_turn: 6
+          dispatch_tools: [sys_session_send, sys_session_create]
+    # Every dispatch declares what kind of work it is.
+    headless_subagent_purpose_guard:
+      type: function
+      function:
+        path: omnigent.policies.builtins.orchestration.headless_subagent_purpose_guard
+        arguments:
+          allowed_purposes: [plan, implement, review, verify, explore, search]
+# <<< shipcrew-guardrails

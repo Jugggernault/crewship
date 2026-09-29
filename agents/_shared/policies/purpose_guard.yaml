@@ -1,0 +1,7 @@
+# Every dispatch declares what kind of work it is.
+headless_subagent_purpose_guard:
+  type: function
+  function:
+    path: omnigent.policies.builtins.orchestration.headless_subagent_purpose_guard
+    arguments:
+      allowed_purposes: [plan, implement, review, verify, explore, search]
