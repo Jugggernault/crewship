@@ -11,6 +11,9 @@ into each bundle:
 * the ``guardrails:`` block of ``agents/<role>/config.yaml``, between the
   ``# >>> shipcrew-guardrails: <policy> ...`` and ``# <<< shipcrew-guardrails``
   markers, from the fragments in ``agents/_shared/policies/<policy>.yaml``.
+  A fragment line ``# @include allowlists/<group>`` is replaced by the lines of
+  ``agents/_shared/policies/allowlists/<group>.yaml``, at the same indentation
+  (the per-role shell allowlists share their command groups this way).
 
 Edit ROLE.md, COMMON.md or a policy fragment, then run::
 
@@ -36,6 +39,8 @@ POLICIES = SHARED / "policies"
 # Approvals (ASK) wait a full day: an approval card should outlive a human
 # stepping away, as in omnigent's polly.
 ASK_TIMEOUT = 86400
+
+_INCLUDE_RE = re.compile(r"^(?P<indent>[ \t]*)# @include (?P<name>[A-Za-z0-9_./-]+)[ \t]*$")
 
 _MARKER_RE = re.compile(
     r"^# >>> shipcrew-guardrails:(?P<names>[^\n]*)\n.*?^# <<< shipcrew-guardrails[^\n]*\n",
@@ -63,6 +68,25 @@ def render_agents_md(bundle: Path) -> str:
     return f"{header}\n\n{role}\n\n---\n\n{common}\n"
 
 
+def expand_includes(text: str, *, depth: int = 0) -> list[str]:
+    """Lines of a fragment with its ``# @include <path>`` lines expanded."""
+    if depth > 4:
+        raise ValueError("shipcrew policy includes nested too deep")
+    lines: list[str] = []
+    for line in text.rstrip().splitlines():
+        match = _INCLUDE_RE.match(line)
+        if match is None:
+            lines.append(line)
+            continue
+        included = POLICIES / f"{match['name']}.yaml"
+        if not included.is_file() or POLICIES.resolve() not in included.resolve().parents:
+            raise FileNotFoundError(f"unknown shipcrew policy include: {included}")
+        indent = match["indent"]
+        for sub in expand_includes(included.read_text(encoding="utf-8"), depth=depth + 1):
+            lines.append(f"{indent}{sub}" if sub else "")
+    return lines
+
+
 def render_guardrails(names: list[str]) -> str:
     """The ``guardrails:`` YAML block built from the named policy fragments."""
     if not names:
@@ -78,7 +102,7 @@ def render_guardrails(names: list[str]) -> str:
         fragment = POLICIES / f"{name}.yaml"
         if not fragment.is_file():
             raise FileNotFoundError(f"unknown shipcrew policy fragment: {fragment}")
-        for line in fragment.read_text(encoding="utf-8").rstrip().splitlines():
+        for line in expand_includes(fragment.read_text(encoding="utf-8")):
             lines.append(f"    {line}" if line else "")
     lines.append("# <<< shipcrew-guardrails")
     return "\n".join(lines) + "\n"

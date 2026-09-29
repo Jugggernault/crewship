@@ -1,0 +1,15 @@
+# Task ownership: a write (Write/Edit, shell redirection, cp/mv/rm/touch/mkdir,
+# git mv/rm/restore, prettier --write, eslint --fix, a dependency change)
+# outside the task's owned_paths asks, and so does a write to package.json or a
+# lockfile unless the task owns it by name. Build output, caches and /tmp are
+# free; reads are never gated. The shipcrew server fills the two @task slots
+# when it starts a board task; left empty the policy abstains.
+shipcrew_owned_paths:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.owned_paths
+    arguments:
+      owned_paths: []  # @task.owned_paths
+      root: ""  # @task.root
+      reason: Stay inside owned_paths; a human approves shared-file edits on the card.

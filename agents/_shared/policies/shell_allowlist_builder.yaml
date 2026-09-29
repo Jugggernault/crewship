@@ -1,0 +1,19 @@
+# Builder shell allowlist (developer, designer, integrator): these commands run
+# with no prompt; any other command, or one with $(..), `..` or a heredoc,
+# pauses on an approval card (Inbox; the board card goes to Intervention).
+# Write targets are judged by shipcrew_owned_paths.
+shipcrew_shell_allowlist:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.shell_allowlist
+    arguments:
+      role: builder
+      shell_writes: true
+      reason: A human approves or denies it on the approval card.
+      allow:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
+        # @include allowlists/git_write
+        # @include allowlists/fs_write
+        # @include allowlists/dev_tools

@@ -1,0 +1,19 @@
+# Scaffolder shell allowlist: the builder set plus generators and dependency
+# changes (package.json / lockfile writes still need the Foundation task to own
+# them by name, see shipcrew_owned_paths). Anything else asks.
+shipcrew_shell_allowlist:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.shell_allowlist
+    arguments:
+      role: scaffolder
+      shell_writes: true
+      reason: A human approves or denies it on the approval card.
+      allow:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
+        # @include allowlists/git_write
+        # @include allowlists/fs_write
+        # @include allowlists/dev_tools
+        # @include allowlists/scaffold

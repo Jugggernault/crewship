@@ -1,0 +1,16 @@
+# Devops shell allowlist: read-only shell, git reads and Vercel reads.
+# `vercel link` / `git connect` / deploys / `env pull` ask. No redirection into
+# files except /dev/null and /tmp.
+shipcrew_shell_allowlist:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.shell_allowlist
+    arguments:
+      role: devops
+      shell_writes: false
+      reason: A human approves or denies it on the approval card.
+      allow:
+        # @include allowlists/read_only
+        # @include allowlists/git_read
+        # @include allowlists/vercel_read
