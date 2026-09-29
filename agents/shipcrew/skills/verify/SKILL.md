@@ -39,9 +39,14 @@ max 3 fix rounds, then `blocked`.
 - Remove the worktree only once its PR is open and review is clean.
 
 ## 4. Mission verification (after every build task passed)
-In one wave: `qa` (purpose `verify`) and `security` (purpose `implement`) on
-the integration head, each in its own worktree. qa failures become new
-`developer` fix-tasks (back through dispatch). security fixes go through
-section 1-3 like any task. Then `devops` (purpose `verify`) when the PRD asks
+In one wave: `qa` and `security` (both purpose `verify`; for a small PRD, one
+`qa` task whose checklist includes the security items) on the integration head,
+each in its own worktree. They write tests only, never app code. A `FAIL` (or a
+blocker/major finding) becomes ONE `developer` task `Fix: <title>` (findings with
+`file:line` + repro, "add a regression test", owned paths = the files named),
+back through dispatch; the verify task re-runs after that fix merges, at most 2
+fix cycles, then the human is told. Tests a verify task wrote go through
+section 1-3 like any task when they pass, or are handed to the fix task when
+they fail. Then `devops` (purpose `verify`) when the PRD asks
 for a deployed URL. Reply with the task table (key, status, PR url), the
 deploy URL if any, and `PASS` or `FAIL: <reason>`.

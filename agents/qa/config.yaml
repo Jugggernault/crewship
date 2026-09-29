@@ -1,7 +1,7 @@
 spec_version: 1
 name: qa
 description: >-
-  shipcrew QA lead: runs the full Playwright suite and walks the PRD demo script in a real browser; writes only .shipcrew/qa.json, fixes nothing.
+  shipcrew QA lead (verify role): runs the whole test suite and walks the PRD demo script in a real browser; writes only test files and .shipcrew/qa.json, fixes nothing (findings become a fix task).
 
 # Code-writing / tool-heavy role: the real Claude Code CLI (claude-native), so
 # the human can open its terminal from the board and take over, and it sees
@@ -38,7 +38,7 @@ os_env:
   sandbox:
     type: none
 
-# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_qa write_only_qa
+# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_qa owned_paths_qa test_writes_qa
 # GENERATED from agents/_shared/policies/*.yaml by scripts/build_agents.py.
 guardrails:
   ask_timeout: 86400
@@ -105,40 +105,19 @@ guardrails:
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
     # CI definitions are the merge gate: changing them needs a human (approval card
-    # in the Inbox). Read-only shell (cat, ls, grep, git diff ..., also chained with
-    # ; && || | and 2>/dev/null) passes; substitutions ($(..), `..`), newlines and
-    # in-place writers (yq -i, git diff --output) do not.
+    # in the Inbox). Any write to .github/workflows/** asks: write tools, and shell
+    # write targets (redirections, cp/mv/tee, sed -i, git checkout <path> ...) or a
+    # command naming a workflow path that is not a known reader (yq -i, git diff
+    # --output, scripts). Reads pass, also inside a chain with other commands
+    # (`git checkout x -- a.js && ls .github/workflows` no longer asks); a command
+    # naming workflows that cannot be analyzed ($(..), backticks, heredocs) asks.
     shipcrew_workflows_approval:
       type: function
       on: [tool_call]
       function:
-        path: omnigent.policies.builtins.cel.cel_policy
+        path: omnigent.shipcrew.policies.workflows_guard
         arguments:
           reason: Editing .github/workflows/** needs human approval.
-          expression: |
-            event.type == "tool_call"
-            && (
-              (
-                event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
-                && (
-                  (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.github/workflows/'))
-                  || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.github/workflows/'))
-                  || (has(event.data.arguments.notebook_path) && event.data.arguments.notebook_path.matches(r'(^|/)\.github/workflows/'))
-                )
-              )
-              || (
-                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
-                && has(event.data.arguments.command)
-                && event.data.arguments.command.matches(r'\.github/workflows')
-                && (
-                  !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>`$\n\r]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
-                  || event.data.arguments.command.matches(r'\byq\b[^;&|]*\s(-i\S*|--inplace)(\s|=|$)')
-                  || event.data.arguments.command.matches(r'\bgit\s+(diff|log|show)\b[^;&|]*\s--output\b')
-                )
-              )
-            )
-            ? {"result": "ASK"}
-            : {"result": "ALLOW"}
     # A browser is preinstalled at $CHROMIUM_PATH; browser downloads are never needed.
     shipcrew_no_browser_download:
       type: function
@@ -154,9 +133,10 @@ guardrails:
             && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
-    # QA shell allowlist: read, test, run the app, curl to localhost only. No git
-    # writes, no file operations, no redirection into files except /dev/null and
-    # /tmp (qa writes only .shipcrew/qa.json, with the Write tool). Anything else asks.
+    # QA shell allowlist: read, test, run the app, curl to localhost only, plus file
+    # operations and `git add` / `git commit` for the tests it writes. Every write
+    # target is judged by shipcrew_test_writes_only (tests + .shipcrew/qa.json only)
+    # and shipcrew_owned_paths. Anything else asks.
     shipcrew_shell_allowlist:
       type: function
       on: [tool_call]
@@ -164,7 +144,7 @@ guardrails:
         path: omnigent.shipcrew.policies.shell_allowlist
         arguments:
           role: qa
-          shell_writes: false
+          shell_writes: true
           reason: A human approves or denies it on the approval card.
           allow:
             # Read-only shell: listing, reading, searching, text processing. `!glob` words
@@ -270,6 +250,19 @@ guardrails:
             - "git branch --merged"
             - "git config --get"
             - "git config --get-all"
+            # Commit on the task branch only (verify roles commit the tests they wrote).
+            # No branch/checkout/reset/merge: those rewrite files or history.
+            - "git add"
+            - "git commit"
+            # File operations; shipcrew_owned_paths decides whether each target is allowed.
+            - "mkdir"
+            - "touch"
+            - "cp"
+            - "mv"
+            - "rm"
+            - "rmdir"
+            - "chmod"
+            - "tee"
             # Package managers (install from the lockfile only), test runners, linters,
             # typecheckers and builds. Adding or removing a dependency is not here: it
             # changes package.json + the lockfile (shared contract files) and asks.
@@ -355,21 +348,31 @@ guardrails:
             - "lsof"
             - "kill"
             - "pkill"
-    # The qa writes exactly one file: .shipcrew/qa.json. Any other write/edit is refused.
-    shipcrew_write_only:
+    # Task ownership (as owned_paths.yaml) for the qa verify role: its report file
+    # .shipcrew/qa.json is writable too. With shipcrew_test_writes_only, the qa writes test files
+    # inside the task's owned paths and that report, nothing else.
+    shipcrew_owned_paths:
       type: function
       on: [tool_call]
       function:
-        path: omnigent.policies.builtins.cel.cel_policy
+        path: omnigent.shipcrew.policies.owned_paths
         arguments:
-          reason: The qa may only write .shipcrew/qa.json.
-          expression: |
-            event.type == "tool_call"
-            && event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
-            && !(
-              (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.shipcrew/qa\.json$'))
-              || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.shipcrew/qa\.json$'))
-            )
-            ? {"result": "DENY"}
-            : {"result": "ALLOW"}
+          owned_paths: []  # @task.owned_paths
+          root: ""  # @task.root
+          extra_free_paths: [".shipcrew/qa.json"]
+          reason: Stay inside owned_paths; a human approves shared-file edits on the card.
+    # Verify role: the qa writes test files only (test/, tests/, e2e/, __tests__/,
+    # *.test.*, *.spec.*) plus its report .shipcrew/qa.json. Every other write is
+    # refused; shipcrew_owned_paths still asks for a test outside the task's paths.
+    # The server writes the worktree over the @task.root slot at start.
+    shipcrew_test_writes_only:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.shipcrew.policies.test_writes_only
+        arguments:
+          role: qa
+          extra_paths: [".shipcrew/qa.json"]
+          root: ""  # @task.root
+          reason: A defect goes into your findings; the board creates the fix task.
 # <<< shipcrew-guardrails

@@ -1,5 +1,8 @@
-# Security shell allowlist: the builder set plus running the app and curl to
-# localhost only. Anything else asks.
+# Security shell allowlist (a verify role, like qa): read, test, run the app,
+# curl to localhost only, plus file operations and `git add` / `git commit` for
+# the PoC / regression tests it writes. Every write target is judged by
+# shipcrew_test_writes_only (tests + .shipcrew/security.md only) and
+# shipcrew_owned_paths. No other git writes. Anything else asks.
 shipcrew_shell_allowlist:
   type: function
   on: [tool_call]
@@ -12,7 +15,7 @@ shipcrew_shell_allowlist:
       allow:
         # @include allowlists/read_only
         # @include allowlists/git_read
-        # @include allowlists/git_write
+        # @include allowlists/git_commit
         # @include allowlists/fs_write
         # @include allowlists/dev_tools
         # @include allowlists/run_app

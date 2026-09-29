@@ -1,0 +1,13 @@
+# Task ownership (as owned_paths.yaml) for the security verify role: its report file
+# .shipcrew/security.md is writable too. With shipcrew_test_writes_only, the security writes test files
+# inside the task's owned paths and that report, nothing else.
+shipcrew_owned_paths:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.owned_paths
+    arguments:
+      owned_paths: []  # @task.owned_paths
+      root: ""  # @task.root
+      extra_free_paths: [".shipcrew/security.md"]
+      reason: Stay inside owned_paths; a human approves shared-file edits on the card.

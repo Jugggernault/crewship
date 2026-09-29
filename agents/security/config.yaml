@@ -1,7 +1,7 @@
 spec_version: 1
 name: security
 description: >-
-  shipcrew security engineer: static security review plus live attack of the running app, fixes real critical/high issues, writes .shipcrew/security.md.
+  shipcrew security engineer (verify role): static security review plus live attack of the running app; writes only PoC/regression tests and .shipcrew/security.md, never fixes app code (findings become a fix task).
 
 # Code-writing / tool-heavy role: the real Claude Code CLI (claude-native), so
 # the human can open its terminal from the board and take over, and it sees
@@ -38,7 +38,7 @@ os_env:
   sandbox:
     type: none
 
-# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_security owned_paths
+# >>> shipcrew-guardrails: blast_radius no_remote_writes no_env_read workflows_approval no_browser_download shell_allowlist_security owned_paths_security test_writes_security
 # GENERATED from agents/_shared/policies/*.yaml by scripts/build_agents.py.
 guardrails:
   ask_timeout: 86400
@@ -105,40 +105,19 @@ guardrails:
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
     # CI definitions are the merge gate: changing them needs a human (approval card
-    # in the Inbox). Read-only shell (cat, ls, grep, git diff ..., also chained with
-    # ; && || | and 2>/dev/null) passes; substitutions ($(..), `..`), newlines and
-    # in-place writers (yq -i, git diff --output) do not.
+    # in the Inbox). Any write to .github/workflows/** asks: write tools, and shell
+    # write targets (redirections, cp/mv/tee, sed -i, git checkout <path> ...) or a
+    # command naming a workflow path that is not a known reader (yq -i, git diff
+    # --output, scripts). Reads pass, also inside a chain with other commands
+    # (`git checkout x -- a.js && ls .github/workflows` no longer asks); a command
+    # naming workflows that cannot be analyzed ($(..), backticks, heredocs) asks.
     shipcrew_workflows_approval:
       type: function
       on: [tool_call]
       function:
-        path: omnigent.policies.builtins.cel.cel_policy
+        path: omnigent.shipcrew.policies.workflows_guard
         arguments:
           reason: Editing .github/workflows/** needs human approval.
-          expression: |
-            event.type == "tool_call"
-            && (
-              (
-                event.data.name in ["Write", "Edit", "MultiEdit", "NotebookEdit", "sys_os_write", "sys_os_edit", "write", "edit"]
-                && (
-                  (has(event.data.arguments.file_path) && event.data.arguments.file_path.matches(r'(^|/)\.github/workflows/'))
-                  || (has(event.data.arguments.path) && event.data.arguments.path.matches(r'(^|/)\.github/workflows/'))
-                  || (has(event.data.arguments.notebook_path) && event.data.arguments.notebook_path.matches(r'(^|/)\.github/workflows/'))
-                )
-              )
-              || (
-                event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
-                && has(event.data.arguments.command)
-                && event.data.arguments.command.matches(r'\.github/workflows')
-                && (
-                  !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>`$\n\r]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
-                  || event.data.arguments.command.matches(r'\byq\b[^;&|]*\s(-i\S*|--inplace)(\s|=|$)')
-                  || event.data.arguments.command.matches(r'\bgit\s+(diff|log|show)\b[^;&|]*\s--output\b')
-                )
-              )
-            )
-            ? {"result": "ASK"}
-            : {"result": "ALLOW"}
     # A browser is preinstalled at $CHROMIUM_PATH; browser downloads are never needed.
     shipcrew_no_browser_download:
       type: function
@@ -154,8 +133,11 @@ guardrails:
             && event.data.arguments.command.matches(r'(\bplaywright(@\S+)?\s+install(-deps)?\b|@puppeteer/browsers\s+install\b|\bpuppeteer\s+browsers\s+install\b)')
             ? {"result": "DENY"}
             : {"result": "ALLOW"}
-    # Security shell allowlist: the builder set plus running the app and curl to
-    # localhost only. Anything else asks.
+    # Security shell allowlist (a verify role, like qa): read, test, run the app,
+    # curl to localhost only, plus file operations and `git add` / `git commit` for
+    # the PoC / regression tests it writes. Every write target is judged by
+    # shipcrew_test_writes_only (tests + .shipcrew/security.md only) and
+    # shipcrew_owned_paths. No other git writes. Anything else asks.
     shipcrew_shell_allowlist:
       type: function
       on: [tool_call]
@@ -269,23 +251,10 @@ guardrails:
             - "git branch --merged"
             - "git config --get"
             - "git config --get-all"
-            # Local git writes on the task branch. Still no push and no remote writes
-            # (shipcrew_no_remote_writes DENYs them); `git fetch` only reads the remote.
+            # Commit on the task branch only (verify roles commit the tests they wrote).
+            # No branch/checkout/reset/merge: those rewrite files or history.
             - "git add"
             - "git commit"
-            - "git branch !-D !-d !--delete !-m !-M !--move !-c !-C !--copy !-f !--force !-u !--set-upstream-to* !--unset-upstream !--edit-description"
-            - "git switch"
-            - "git checkout"
-            - "git merge"
-            - "git rebase !-i !--interactive !-x !--exec*"
-            - "git cherry-pick"
-            - "git revert"
-            - "git restore"
-            - "git reset !--hard !--merge !--keep"
-            - "git mv"
-            - "git rm"
-            - "git stash push -m"
-            - "git fetch !--upload-pack*"
             # File operations; shipcrew_owned_paths decides whether each target is allowed.
             - "mkdir"
             - "touch"
@@ -380,12 +349,9 @@ guardrails:
             - "lsof"
             - "kill"
             - "pkill"
-    # Task ownership: a write (Write/Edit, shell redirection, cp/mv/rm/touch/mkdir,
-    # git mv/rm/restore, prettier --write, eslint --fix, a dependency change)
-    # outside the task's owned_paths asks, and so does a write to package.json or a
-    # lockfile unless the task owns it by name. Build output, caches and /tmp are
-    # free; reads are never gated. The shipcrew server fills the two @task slots
-    # when it starts a board task; left empty the policy abstains.
+    # Task ownership (as owned_paths.yaml) for the security verify role: its report file
+    # .shipcrew/security.md is writable too. With shipcrew_test_writes_only, the security writes test files
+    # inside the task's owned paths and that report, nothing else.
     shipcrew_owned_paths:
       type: function
       on: [tool_call]
@@ -394,5 +360,20 @@ guardrails:
         arguments:
           owned_paths: []  # @task.owned_paths
           root: ""  # @task.root
+          extra_free_paths: [".shipcrew/security.md"]
           reason: Stay inside owned_paths; a human approves shared-file edits on the card.
+    # Verify role: security writes test files only (test/, tests/, e2e/, __tests__/,
+    # *.test.*, *.spec.*: PoC and regression tests) plus its report
+    # .shipcrew/security.md. Every other write is refused; shipcrew_owned_paths still
+    # asks for a test outside the task's paths. The server fills the @task.root slot.
+    shipcrew_test_writes_only:
+      type: function
+      on: [tool_call]
+      function:
+        path: omnigent.shipcrew.policies.test_writes_only
+        arguments:
+          role: security
+          extra_paths: [".shipcrew/security.md"]
+          root: ""  # @task.root
+          reason: A vulnerability goes into your findings with its PoC; the board creates the fix task.
 # <<< shipcrew-guardrails

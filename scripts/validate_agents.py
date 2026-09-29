@@ -97,10 +97,13 @@ REPO_PATH = "/work/mission"
 TASK_OWNED = ["app/**", "e2e/cart.spec.ts"]
 BRANCH = "shipcrew/1a2b3c4d-cart"  # shipcrew/<first 8 chars of the task id>-<slug>
 
-BUILDERS = ("builder", "scaffolder", "security")  # owned paths + git/file writes
-RUNNERS = (*BUILDERS, "qa")  # run tests, linters, builds
+BUILDERS = ("builder", "scaffolder")  # owned paths + git/file writes
+VERIFIERS = ("security", "qa")  # owned paths + test files only + git add/commit
+COMMITTERS = (*BUILDERS, *VERIFIERS)  # commit on the task branch
+RUNNERS = COMMITTERS  # run tests, linters, builds
 READERS = ("reviewer", "devops", "planner")  # read-only shell
 TESTERS = (*RUNNERS, "reviewer")  # may re-run the test suite
+WRITE_LIMITED = ("reviewer", "devops", "planner", *VERIFIERS)  # refused outside their files
 
 
 def _bash(cmd: str) -> tuple[str, dict[str, str]]:
@@ -112,10 +115,16 @@ def _only(profiles: tuple[str, ...], verdict: str = "ALLOW", *, other: str = "AS
     return {"*": other, "orchestrator": "ALLOW", **{p: verdict for p in profiles}}
 
 
-# A write tool: builders are judged by owned paths, the write-limited roles DENY.
+def _no_verify(expected: dict[str, str]) -> dict[str, str]:
+    """*expected*, with the verify roles DENY: a write outside test files is refused."""
+    return {**expected, **{p: "DENY" for p in VERIFIERS}}
+
+
+# A write tool: builders are judged by owned paths, the write-limited roles DENY
+# (the verify roles too, unless the path is a test file or their report).
 def _write_verdicts(builders: str, **overrides: str) -> dict[str, str]:
     base = {"*": builders, "orchestrator": "ALLOW"}
-    base.update({p: "DENY" for p in ("reviewer", "qa", "devops", "planner")})
+    base.update({p: "DENY" for p in WRITE_LIMITED})
     base.update(overrides)
     return base
 
@@ -167,8 +176,8 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         {"*": "DENY", "orchestrator": "ALLOW"},
     ),
     ("gh pr view", *_bash("gh pr view 12 --json state"), {"*": "ALLOW"}),
-    ("commit msg says push", *_bash('git commit -m "push the button"'), _only(BUILDERS)),
-    ("commit via heredoc", *_bash(COMMIT_HEREDOC), _only(BUILDERS)),
+    ("commit msg says push", *_bash('git commit -m "push the button"'), _only(COMMITTERS)),
+    ("commit via heredoc", *_bash(COMMIT_HEREDOC), _only(COMMITTERS)),
     (
         "local git + tests",
         *_bash("git status && git diff origin/main...HEAD && npm test"),
@@ -178,7 +187,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("rm -rf /", *_bash("rm -rf /"), {"*": "DENY"}),
     ("force push", *_bash(f"git push --force origin {BRANCH}"), {"*": "DENY"}),
     ("hard reset remote", *_bash("git reset --hard origin/main"), {"*": "DENY"}),
-    ("rm -rf build dirs", *_bash("rm -rf node_modules .next"), _only(BUILDERS)),
+    ("rm -rf build dirs", *_bash("rm -rf node_modules .next"), _only(COMMITTERS)),
     # secrets
     ("Read .env", "Read", {"file_path": f"{REPO_PATH}/.env"}, {"*": "DENY"}),
     ("Read .env.local", "Read", {"file_path": f"{REPO_PATH}/.env.local"}, {"*": "DENY"}),
@@ -217,7 +226,11 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         },
         _write_verdicts("ASK", orchestrator="ASK"),
     ),
-    ("sed -i workflow", *_bash("sed -i 's/npm/pnpm/' .github/workflows/ci.yml"), {"*": "ASK"}),
+    (
+        "sed -i workflow",
+        *_bash("sed -i 's/npm/pnpm/' .github/workflows/ci.yml"),
+        _no_verify({"*": "ASK"}),
+    ),
     ("cat workflow", *_bash("cat .github/workflows/ci.yml"), {"*": "ALLOW"}),
     (
         "chained read of workflows",
@@ -227,11 +240,15 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         ),
         {"*": "ALLOW"},
     ),
-    ("redirect into workflow", *_bash("cat ci.yml > .github/workflows/ci.yml"), {"*": "ASK"}),
+    (
+        "redirect into workflow",
+        *_bash("cat ci.yml > .github/workflows/ci.yml"),
+        _no_verify({"*": "ASK"}),
+    ),
     (
         "read then write workflow",
         *_bash("ls .github/workflows && sed -i 's/a/b/' .github/workflows/ci.yml"),
-        {"*": "ASK"},
+        _no_verify({"*": "ASK"}),
     ),
     (
         "write hidden in a substitution",
@@ -246,7 +263,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     (
         "write on a second line",
         *_bash("cat .github/workflows/ci.yml\nsed -i 's/a/b/' .github/workflows/ci.yml"),
-        {"*": "ASK"},
+        _no_verify({"*": "ASK"}),
     ),
     ("yq in-place edit", *_bash("yq -i '.on = \"push\"' .github/workflows/ci.yml"), {"*": "ASK"}),
     ("yq read of workflow", *_bash("yq '.jobs' .github/workflows/ci.yml"), {"*": "ALLOW"}),
@@ -256,6 +273,16 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         {"*": "ASK"},
     ),
     ("grep -i workflows", *_bash("grep -i node .github/workflows/ci.yml"), {"*": "ALLOW"}),
+    (
+        "checkout then read workflows",  # asked under the old regex (seen live)
+        *_bash("git checkout main -- app/page.tsx && ls .github/workflows 2>/dev/null"),
+        _no_verify(_only(BUILDERS)),
+    ),
+    (
+        "fetch then list workflows",
+        *_bash("git fetch -q origin; ls .github/workflows"),
+        _only(BUILDERS),
+    ),
     # no browser downloads
     ("playwright install", *_bash("npx playwright install chromium"), {"*": "DENY"}),
     ("playwright install deps", *_bash("pnpm exec playwright install --with-deps"), {"*": "DENY"}),
@@ -297,7 +324,11 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("sort -uo cluster", *_bash("sort -uo /tmp/x README.md"), _only(())),
     ("param expansion", *_bash("CI=--output=/tmp/x; git diff $CI"), _only(())),
     ("brace expansion", *_bash("git reset --{ha,}rd HEAD~1"), _only(())),
-    ("git checkout tree-ish path", *_bash("git checkout HEAD~1 lib/db.ts"), _only(())),
+    (
+        "git checkout tree-ish path",
+        *_bash("git checkout HEAD~1 lib/db.ts"),
+        _no_verify(_only(())),
+    ),
     ("python -c", *_bash('python3 -c "import os; print(os.listdir())"'), _only(())),
     ("bash -c", *_bash('bash -c "npm test"'), _only(())),
     ("unknown env prefix", *_bash("NODE_OPTIONS=--require=/tmp/x.js npm test"), _only(())),
@@ -309,7 +340,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ),
     ("curl localhost -o", *_bash("curl -so /tmp/x http://127.0.0.1:3000"), _only(())),
     ("init.sh", *_bash("./init.sh"), _only(("security", "qa"))),
-    ("npm install pkg", *_bash("npm install lodash"), _only(())),
+    ("npm install pkg", *_bash("npm install lodash"), _no_verify(_only(()))),
     ("create-next-app", *_bash("npx create-next-app@latest . --ts --yes"), _only(("scaffolder",))),
     ("vercel ls", *_bash("vercel ls --prod"), _only(("devops",))),
     ("vercel inspect", *_bash("vercel inspect https://x.vercel.app --wait"), _only(("devops",))),
@@ -341,8 +372,12 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("curl lookalike host", *_bash("curl -sS https://tiny.vercel.app.evil.com/"), _only(())),
     ("curl http deployment", *_bash("curl -sS http://tiny.vercel.app/"), _only(())),
     ("curl two urls", *_bash("curl -sS https://tiny.vercel.app https://example.com"), _only(())),
-    ("prettier --write .", *_bash("npx prettier --write ."), _only(())),
-    ("prettier --write owned", *_bash("npx prettier --write app/cart"), _only(BUILDERS)),
+    ("prettier --write .", *_bash("npx prettier --write ."), _no_verify(_only(()))),
+    (
+        "prettier --write owned",
+        *_bash("npx prettier --write app/cart"),
+        _no_verify(_only(BUILDERS)),
+    ),
     # owned paths (task owns app/** and e2e/cart.spec.ts)
     (
         "Write source",
@@ -354,7 +389,13 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         "Write owned by name",
         "Write",
         {"file_path": f"{REPO_PATH}/e2e/cart.spec.ts", "content": "x"},
-        _write_verdicts("ALLOW"),
+        _write_verdicts("ALLOW", qa="ALLOW", security="ALLOW"),  # a test file: verifiers too
+    ),
+    (
+        "Write test outside owned",
+        "Write",
+        {"file_path": f"{REPO_PATH}/tests/cart.test.ts", "content": "x"},
+        _write_verdicts("ASK", qa="ASK", security="ASK"),  # a test, but not this task's
     ),
     (
         "Write outside owned",
@@ -378,13 +419,19 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         "Write screenshot to /tmp",
         "Write",
         {"file_path": "/tmp/shot.png", "content": "x"},
-        _write_verdicts("ALLOW"),
+        _write_verdicts("ALLOW", qa="ALLOW", security="ALLOW"),
     ),
     (
         "Write qa.json",
         "Write",
         {"file_path": f"{REPO_PATH}/.shipcrew/qa.json", "content": "{}"},
         _write_verdicts("ASK", qa="ALLOW"),
+    ),
+    (
+        "Write security.md",
+        "Write",
+        {"file_path": f"{REPO_PATH}/.shipcrew/security.md", "content": "x"},
+        _write_verdicts("ASK", security="ALLOW"),
     ),
     (
         "Write deploy.json",
@@ -398,13 +445,41 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         {"path": ".shipcrew/plan.json", "content": "{}"},
         _write_verdicts("ASK", planner="ALLOW"),
     ),
-    ("redirect outside owned", *_bash("echo x > lib/db.ts"), _only(())),
-    ("redirect inside owned", *_bash("echo x > app/cart/note.txt"), _only(BUILDERS)),
-    ("tee outside owned", *_bash("echo x | tee lib/db.ts"), _only(())),
-    ("mkdir owned", *_bash("mkdir -p app/cart/components"), _only(BUILDERS)),
-    ("cd then write outside", *_bash("cd lib && touch x.ts"), _only(())),
-    ("git mv out of owned", *_bash("git mv app/a.ts lib/a.ts"), _only(())),
-    ("cp into owned", *_bash("cp lib/db.ts app/cart/db-copy.ts"), _only(BUILDERS)),
+    ("redirect outside owned", *_bash("echo x > lib/db.ts"), _no_verify(_only(()))),
+    (
+        "redirect inside owned",
+        *_bash("echo x > app/cart/note.txt"),
+        _no_verify(_only(BUILDERS)),
+    ),
+    ("tee outside owned", *_bash("echo x | tee lib/db.ts"), _no_verify(_only(()))),
+    ("mkdir owned", *_bash("mkdir -p app/cart/components"), _no_verify(_only(BUILDERS))),
+    ("cd then write outside", *_bash("cd lib && touch x.ts"), _no_verify(_only(()))),
+    ("git mv out of owned", *_bash("git mv app/a.ts lib/a.ts"), _no_verify(_only(()))),
+    (
+        "cp into owned",
+        *_bash("cp lib/db.ts app/cart/db-copy.ts"),
+        _no_verify(_only(BUILDERS)),
+    ),
+    # verify roles (qa, security): tests only, committed on the task branch
+    (
+        "verify commits its test",
+        *_bash("git add e2e/cart.spec.ts && git commit -m 'test(cart): regression for the total'"),
+        _only(COMMITTERS),
+    ),
+    ("copy a test fixture", *_bash("cp e2e/cart.spec.ts /tmp/cart.bak"), _only(COMMITTERS)),
+    (
+        "Edit a test the task owns",
+        "Edit",
+        {"file_path": f"{REPO_PATH}/e2e/cart.spec.ts", "old_string": "a", "new_string": "b"},
+        _write_verdicts("ALLOW", qa="ALLOW", security="ALLOW"),
+    ),
+    (
+        "Edit app code as a verifier",
+        "Edit",
+        {"file_path": f"{REPO_PATH}/app/cart/page.tsx", "old_string": "a", "new_string": "b"},
+        _write_verdicts("ALLOW"),
+    ),
+    ("git stash (verifier)", *_bash("git stash"), _only(())),
     ("log to /tmp", *_bash("npm test > /tmp/test.log 2>&1"), _only(TESTERS)),
     # orchestrator dispatch hygiene
     (
@@ -440,6 +515,7 @@ PROFILE = {
     ORCHESTRATOR: "orchestrator",
 }
 OWNED_PATHS_POLICY = "shipcrew_owned_paths"
+TEST_WRITES_POLICY = "shipcrew_test_writes_only"
 SHELL_ALLOWLIST_POLICY = "shipcrew_shell_allowlist"
 CLAUDE_NATIVE_CORE_TOOLS = {"Bash", "Read", "Glob", "Grep"}
 CLAUDE_NATIVE_WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -492,7 +568,7 @@ def _with_task_contract(bundle: Path) -> AgentSpec:
 def _check_guardrails(name: str, spec: AgentSpec, errors: list[str]) -> int:
     profile = PROFILE[name]
     names = {p.name for p in spec.guardrails.policies} if spec.guardrails else set()
-    if profile in BUILDERS:
+    if profile in COMMITTERS:
         if OWNED_PATHS_POLICY not in names:
             errors.append(f"{OWNED_PATHS_POLICY} policy missing")
         # without a task contract (not started from a board card) it abstains
@@ -507,6 +583,14 @@ def _check_guardrails(name: str, spec: AgentSpec, errors: list[str]) -> int:
         ).function.arguments
         if injected.get("owned_paths") != TASK_OWNED or injected.get("root") != REPO_PATH:
             errors.append(f"task contract not injected: {injected}")
+    if profile in VERIFIERS:
+        tests = next(
+            (p for p in spec.guardrails.policies if p.name == TEST_WRITES_POLICY), None
+        )
+        if tests is None:
+            errors.append(f"{TEST_WRITES_POLICY} policy missing (verify roles write tests only)")
+        elif tests.function.arguments.get("root") != REPO_PATH:
+            errors.append(f"{TEST_WRITES_POLICY}: task root not injected")
     if profile != "orchestrator" and SHELL_ALLOWLIST_POLICY not in names:
         errors.append(f"{SHELL_ALLOWLIST_POLICY} policy missing")
     policies = _build_policies(spec)

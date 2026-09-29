@@ -1,0 +1,14 @@
+# Verify role: the qa writes test files only (test/, tests/, e2e/, __tests__/,
+# *.test.*, *.spec.*) plus its report .shipcrew/qa.json. Every other write is
+# refused; shipcrew_owned_paths still asks for a test outside the task's paths.
+# The server writes the worktree over the @task.root slot at start.
+shipcrew_test_writes_only:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.test_writes_only
+    arguments:
+      role: qa
+      extra_paths: [".shipcrew/qa.json"]
+      root: ""  # @task.root
+      reason: A defect goes into your findings; the board creates the fix task.

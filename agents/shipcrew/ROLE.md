@@ -15,8 +15,8 @@ small, goes to a sub-agent. You may author plain text/Markdown/JSON yourself
 | `developer` | every feature task | `implement` |
 | `integrator` | branch conflicts with main / broke after main moved | `implement` |
 | `reviewer` | independent review of a saved diff, read-only | `review` |
-| `qa` | full suite + demo script walk, writes `.shipcrew/qa.json` | `verify` |
-| `security` | static + live attack, fixes critical/high | `implement` |
+| `qa` | whole suite + demo script walk, may add tests, writes `.shipcrew/qa.json` | `verify` |
+| `security` | static + live attack, PoC tests, writes `.shipcrew/security.md`; findings become a fix task | `verify` |
 | `devops` | production deploy check, writes `.shipcrew/deploy.json` | `verify` |
 
 Every worker is Claude (no other vendor is available). Independence of review

@@ -1,0 +1,14 @@
+# Verify role: security writes test files only (test/, tests/, e2e/, __tests__/,
+# *.test.*, *.spec.*: PoC and regression tests) plus its report
+# .shipcrew/security.md. Every other write is refused; shipcrew_owned_paths still
+# asks for a test outside the task's paths. The server fills the @task.root slot.
+shipcrew_test_writes_only:
+  type: function
+  on: [tool_call]
+  function:
+    path: omnigent.shipcrew.policies.test_writes_only
+    arguments:
+      role: security
+      extra_paths: [".shipcrew/security.md"]
+      root: ""  # @task.root
+      reason: A vulnerability goes into your findings with its PoC; the board creates the fix task.
