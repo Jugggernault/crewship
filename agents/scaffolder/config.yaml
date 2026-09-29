@@ -5,7 +5,7 @@ description: >-
 
 # Code-writing / tool-heavy role: the real Claude Code CLI (claude-native), so
 # the human can open its terminal from the board and take over, and it sees
-# the user's installed plugins, skills and MCP servers. No model is pinned:
+# the user's installed plugins and skills (MCP servers: only its own, below). No model is pinned:
 # it runs on the configured Claude provider (a Claude subscription works).
 executor:
   type: omnigent
@@ -19,6 +19,12 @@ executor:
     # Claude's prompt, which omnigent routes to the Inbox too.
     permission_mode: default
     allowed_tools: Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent,mcp__shadcn
+    # >>> shipcrew-mcp: shadcn
+    # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
+    # Only these MCP servers (plus omnigent's relay), never the host user's own.
+    strict_mcp_config: true
+    mcp_config: '{"mcpServers":{"shadcn":{"command":"npx","args":["-y","shadcn@latest","mcp"]}}}'
+    # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
 instructions: AGENTS.md

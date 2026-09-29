@@ -18,13 +18,13 @@ provider configured with `omnigent setup`.
 |---|---|---|---|---|
 | `shipcrew` (orchestrator) | `claude-sdk`, `spawn: true`, `tools.agents` = the 9 roles | bundled: `plan`, `dispatch`, `verify` | pushes only `shipcrew/<id8>-<slug>` task branches, each named explicitly (every push of a chained command is checked), never `main`/`master`/`HEAD`, `--all`/`--mirror`/`--tags`/`--delete`/`+refspec`; `gh pr merge` / `repo delete` / `release create` ASK; max 6 dispatches per turn; every dispatch declares a purpose (`plan`, `implement`, `review`, `verify`, `explore`, `search`) | `PASS` / `FAIL: <reason>` |
 | `planner` (PM + architect) | `claude-sdk` | none | read-only shell allowlist; writes only `.shipcrew/plan.json` | `PASS` / `FAIL` |
-| `designer` | `claude-native` | `shipcrew:design-lock`, `impeccable` | builder allowlist, owned paths | `PASS` / `FAIL` |
-| `scaffolder` | `claude-native` | `vercel:nextjs`, `vercel:shadcn`, `vercel:vercel-storage`, `shipcrew:design-lock` | scaffolder allowlist (builder + generators, dependency changes), owned paths | `PASS` / `FAIL` |
-| `developer` | `claude-native` | `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `shipcrew:design-lock`, `vercel:nextjs`, `vercel:shadcn` | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `designer` | `claude-native` | `shipcrew:design-lock`, `impeccable`, shadcn MCP | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `scaffolder` | `claude-native` | `vercel:nextjs`, `vercel:shadcn`, `vercel:vercel-storage`, `shipcrew:design-lock`, shadcn MCP | scaffolder allowlist (builder + generators, dependency changes), owned paths | `PASS` / `FAIL` |
+| `developer` | `claude-native` | `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `shipcrew:design-lock`, `vercel:nextjs`, `vercel:shadcn`, shadcn MCP | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `reviewer` | `claude-native`, a fresh session each round | `code-review`, `security-review`, `shipcrew:design-lock` | read-only shell allowlist plus test runners; read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
 | `integrator` | `claude-native` | bundled: `resolve-conflicts` | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `qa` | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | qa allowlist (read, test, run the app, curl localhost; no shell writes); writes only `.shipcrew/qa.json` | `PASS` / `FAIL: <n> failures` |
-| `security` | `claude-native` | `security-review`, chrome-devtools MCP | security allowlist (builder + run the app, curl localhost), owned paths | `PASS` / `FAIL` |
+| `security` | `claude-native` | `security-review` (curl + Playwright, no browser MCP) | security allowlist (builder + run the app, curl localhost), owned paths | `PASS` / `FAIL` |
 | `devops` | `claude-native` | `vercel:deploy`, `vercel:deployments-cicd` | devops allowlist (read-only + Vercel reads); writes only `.shipcrew/deploy.json` | `PASS` / `FAIL` |
 
 Permissions are set up so that nothing ever uses `bypassPermissions` (see
@@ -40,6 +40,35 @@ from a different vendor. We only have Claude, so the orchestrator starts a
 session gets only a saved diff snapshot and the task contract, never the
 implementer's worktree or transcript. It can't edit files, and it may be given
 a stronger `args.model` than the implementer.
+
+### MCP servers per role
+
+Every bundle runs with `strict_mcp_config: true`: the session loads only the
+MCP servers its bundle lists, plus omnigent's own relay (the `sys_*` tools).
+None of the host user's servers leak in: no claude.ai connectors (Gmail,
+Canva, Notion, Vercel, Figma, ...), no `~/.claude.json` servers, no plugin
+servers. That saves context and narrows what a prompt-injected agent can reach.
+
+| role | MCP servers |
+|---|---|
+| `developer`, `scaffolder`, `designer` | `shadcn` (`npx -y shadcn@latest mcp`) |
+| `qa` | `chrome-devtools` (headless, `--isolated`, `${CHROMIUM_PATH:-/usr/bin/chromium}`) |
+| `devops` | none (deploys with the `vercel` CLI) |
+| `reviewer`, `integrator`, `security`, `planner`, `shipcrew` | none |
+
+The servers live in `_shared/mcp/<server>.json` (one server object each). A
+bundle names them on its `# >>> shipcrew-mcp: <server> ...` marker inside
+`executor.config`, and `scripts/build_agents.py` renders `strict_mcp_config`
+and `mcp_config` (JSON) between the markers. The `mcp__<server>` entries of
+`allowed_tools` must match (the validator checks it).
+
+In the omnigent fork (`omnigent/shipcrew/launch_args.py`), claude-native gets
+`--strict-mcp-config --mcp-config <json>` next to `--allowedTools`. The bridge
+then appends the relay's own `--mcp-config`: Claude merges repeated flags and
+strict mode keeps every server passed that way. claude-sdk gets
+`--strict-mcp-config` through `HARNESS_CLAUDE_SDK_STRICT_MCP_CONFIG=1`, and its
+in-process `omnigent` server stays. Checked live on 2026-09-29: a developer
+session saw exactly `omnigent` and `shadcn`, and `sys_os_read` worked.
 
 ### Common guardrail set (every bundle)
 
@@ -225,6 +254,7 @@ agents/
   _shared/COMMON.md          common rules (stack, fake DB, CHROMIUM_PATH, limits, done)
   _shared/policies/*.yaml    guardrail fragments, one policy each
   _shared/policies/allowlists/*.yaml  shell command groups (# @include'd by the allowlist fragments)
+  _shared/mcp/*.json         MCP server fragments (named on a bundle's shipcrew-mcp marker)
   <role>/ROLE.md             role prompt (hand-written)
   <role>/AGENTS.md           GENERATED = ROLE.md + COMMON.md  (config: instructions: AGENTS.md)
   <role>/config.yaml         bundle spec; its guardrails block is GENERATED between markers
@@ -247,7 +277,9 @@ python3 scripts/build_agents.py --check    # CI / pre-commit: fails if generated
 ```
 
 To change a role's policy set, edit the names on its
-`# >>> shipcrew-guardrails: ...` marker line and rebuild.
+`# >>> shipcrew-guardrails: ...` marker line and rebuild. To change its MCP
+servers, edit the `# >>> shipcrew-mcp: ...` marker, its `allowed_tools` and
+`MCP_SERVERS` in `scripts/validate_agents.py`, then rebuild.
 
 ## Validation
 
@@ -270,6 +302,9 @@ For each bundle, the validator does the following:
   - instructions are actually read from `AGENTS.md`;
   - bundled skills;
   - the orchestrator's `tools.agents` equals the roles;
+  - the MCP set per role (`MCP_SERVERS`): `strict_mcp_config` on, exactly the
+    expected servers, `allowed_tools`' `mcp__*` entries match, and the derived
+    launch args (claude-native) or spawn env (claude-sdk) carry the strict flag;
 - builds every guardrail through omnigent's factory path and runs 117
   tool-call cases per bundle (plus the dispatch cap), expecting a specific
   ALLOW, ASK or DENY for each. The cases cover:
@@ -297,6 +332,11 @@ For each bundle, the validator does the following:
   `.shipcrew/deploy.json`.
 - **Board mode.** Send the orchestrator `mode: plan-only` when the board's
   scheduler runs the tasks. It then stops once `plan.json` is valid.
+- **Board commands.** The mission "Ask the crew…" box posts to
+  `/missions/{id}/command`; today the server maps `run all` / `lance tout`,
+  `plan`, `sync` and `stop all` / `arrête tout` with fixed rules (table in
+  `shipcrew/ROLE.md`). Routing free text to a mission-scoped orchestrator
+  session is a later step.
 - **Publishing.** Workers never push. The module, or the orchestrator in full
   mode, pushes `shipcrew/<id8>-<slug>` branches (first 8 chars of the task
   id, slug of the title) and opens draft PRs.

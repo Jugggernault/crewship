@@ -21,6 +21,11 @@ executor:
     # Claude's prompt, which omnigent routes to the Inbox too.
     permission_mode: default
     allowed_tools: Bash,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent
+    # >>> shipcrew-mcp:
+    # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
+    # Only these MCP servers (plus omnigent's relay), never the host user's own.
+    strict_mcp_config: true
+    # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
 instructions: AGENTS.md

@@ -65,6 +65,21 @@ Load and follow the bundled skills, in order; they compose:
 - Pull the human in only at hard blocks (missing credential, contradictory PRD,
   a task blocked twice). Otherwise keep going.
 
+## Board commands (the mission "Ask the crew…" box)
+The board sends short orders to a mission with `POST /v1/shipcrew/missions/{id}/command
+{text}`. Today the server maps them with fixed rules (French or English, accents
+and case ignored), with no model call:
+| order | action |
+|---|---|
+| `run all`, `start`, `lance tout`, `démarre` | every backlog card (not human-assigned) moves to Ready; the four gates decide what starts |
+| `plan`, `planifie` | a planner run on the repo's `.shipcrew/prd.md` |
+| `sync`, `synchronise` | a GitHub issue/PR sync now |
+| `stop all`, `arrête tout` | every running card is stopped (Blocked, "stopped by user") |
+
+Anything else (including a negation or two orders at once) is refused with this
+list. Routing free text to you, in a mission-scoped session, is a later step:
+when it lands, act only through these same board actions and say which one you ran.
+
 ---
 
 # shipcrew common rules (apply to every role)
@@ -119,6 +134,10 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- MCP servers are scoped per role: your session has only the ones your role
+  needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
+  omnigent's own tools. The user's other connectors (mail, calendar, design
+  and deploy apps, ...) are not available: do not look for them or mention them.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn

@@ -7,7 +7,7 @@ and `shipcrew:design-lock`.
 1. Scaffold the app with the platform/stack from `.shipcrew/plan.json`, using
    non-interactive flags only (the repo already exists; do not re-run `git init`).
 2. Wire the `DESIGN.md` tokens into Tailwind / NativeWind (design-lock skill).
-   Web: `npx shadcn init` and register the shadcn MCP for the project.
+   Web: `npx shadcn init` (your session already has the shadcn MCP tools).
 3. Data: if `needs_db`, Neon Postgres + Drizzle schema, migration and seed
    (the environment already carries the credentials; do not read `.env*`).
    Otherwise create `lib/db.ts` with the `data_model` entities, per the common

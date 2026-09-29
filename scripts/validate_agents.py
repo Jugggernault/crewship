@@ -18,7 +18,10 @@ For each ``agents/<bundle>/`` it checks:
    ``permission_mode: default`` + ``allowed_tools`` turned into
    ``--allowedTools`` by omnigent's launch-arg derivation; claude-sdk:
    ``auto``; never bypassPermissions), bundled skills, the orchestrator's
-   ``tools.agents`` = the roles;
+   ``tools.agents`` = the roles; the MCP scoping per role (``MCP_SERVERS``:
+   strict MCP config, exactly the expected servers, turned into
+   ``--strict-mcp-config`` / ``--mcp-config`` for claude-native and into the
+   claude-sdk strict env flag, and ``allowed_tools``' ``mcp__*`` entries match);
 5. the guardrails behave: every function policy is resolved and built through
    omnigent's factory path, then run on a matrix of tool calls (git push,
    gh pr create, .env reads, workflow edits, playwright install, rm -rf /,
@@ -61,6 +64,21 @@ ROLES = [
 ]
 ORCHESTRATOR = "shipcrew"
 SDK_BUNDLES = {"planner", ORCHESTRATOR}  # claude-sdk; every other role is claude-native
+# MCP servers each bundle may load (on top of omnigent's own relay). Every
+# session runs with --strict-mcp-config, so none of the host user's servers,
+# plugins or claude.ai connectors (Gmail, Canva, Notion, Vercel, ...) leak in.
+MCP_SERVERS: dict[str, set[str]] = {
+    "planner": set(),
+    "designer": {"shadcn"},
+    "scaffolder": {"shadcn"},
+    "developer": {"shadcn"},
+    "reviewer": set(),
+    "integrator": set(),
+    "qa": {"chrome-devtools"},
+    "security": set(),
+    "devops": set(),  # deploys with the vercel CLI
+    "shipcrew": set(),
+}
 BUNDLED_SKILLS = {
     "integrator": {"resolve-conflicts"},
     ORCHESTRATOR: {"plan", "dispatch", "verify"},
@@ -535,6 +553,7 @@ def _check_conventions(name: str, spec: AgentSpec, errors: list[str]) -> None:
             errors.append(f"claude launch args: got {launch}")
     elif allowed:
         errors.append("allowed_tools is only for claude-native bundles")
+    _check_mcp(name, spec, want_harness, allowed, errors)
     if "bypass" in str(config.get("permission_mode", "")).lower():
         errors.append("bypassPermissions is not allowed")
     if spec.executor.model is not None:
@@ -555,6 +574,52 @@ def _check_conventions(name: str, spec: AgentSpec, errors: list[str]) -> None:
             standalone = parse(AGENTS / role, expand_env=False)
             if sub.instructions != standalone.instructions:
                 errors.append(f"sub-agent {role!r} differs from agents/{role}")
+
+
+def _check_mcp(
+    name: str, spec: AgentSpec, harness: str, allowed: set[str], errors: list[str]
+) -> None:
+    from omnigent.shipcrew.launch_args import (
+        claude_mcp_launch_args,
+        mcp_server_names,
+        strict_mcp_enabled,
+    )
+
+    config = spec.executor.config
+    want = MCP_SERVERS[name]
+    if not strict_mcp_enabled(config):
+        errors.append("strict_mcp_config must be true (no host MCP servers)")
+    try:
+        servers = set(mcp_server_names(config))
+        claude_args = claude_mcp_launch_args(config)
+    except ValueError as exc:
+        errors.append(f"mcp_config: {exc}")
+        return
+    if servers != want:
+        errors.append(f"MCP servers: expected {sorted(want)}, got {sorted(servers)}")
+    mcp_tools = {t.removeprefix("mcp__") for t in allowed if t.startswith("mcp__")}
+    if harness == "claude-native":
+        if mcp_tools != want | {"omnigent"}:
+            errors.append(
+                f"allowed_tools mcp__* entries: expected {sorted(want | {'omnigent'})}, "
+                f"got {sorted(mcp_tools)}"
+            )
+        from omnigent.server.routes._sessions.helpers import (
+            _derive_terminal_launch_args_from_spec,
+        )
+
+        launch = _derive_terminal_launch_args_from_spec(spec, headless_defaults=False) or []
+        if "--strict-mcp-config" not in launch:
+            errors.append(f"claude launch args lack --strict-mcp-config: {launch}")
+        if claude_args and launch[-len(claude_args) :] != claude_args:
+            errors.append(f"claude launch args lack the role MCP config: {launch}")
+    else:
+        if servers:
+            errors.append("claude-sdk bundles take no mcp_config (only strict_mcp_config)")
+        from omnigent.runtime.workflow import _build_claude_sdk_spawn_env
+
+        if _build_claude_sdk_spawn_env(spec).get("HARNESS_CLAUDE_SDK_STRICT_MCP_CONFIG") != "1":
+            errors.append("claude-sdk spawn env lacks HARNESS_CLAUDE_SDK_STRICT_MCP_CONFIG=1")
 
 
 def main() -> int:
@@ -606,7 +671,8 @@ def main() -> int:
             print(
                 f"ok   {name:<11} {spec.executor.config['harness']:<13} "
                 f"{n_policies} policies, {n_cases} guardrail cases, "
-                f"{len(spec.skills)} bundled skills, {len(spec.sub_agents)} sub-agents"
+                f"{len(spec.skills)} bundled skills, {len(spec.sub_agents)} sub-agents, "
+                f"MCP: {', '.join(sorted(MCP_SERVERS[name])) or 'none'}"
             )
     if failed:
         print(f"\n{failed} bundle(s) failed")
