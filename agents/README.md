@@ -170,6 +170,15 @@ subscription login ran one developer-bundle task on a throwaway npm repo
   before the worktree check, so the write went through. The worktree check
   now runs first, and there is a regression test.
 
+### PR-loop e2e (2026-09-29)
+
+The omnigent round-2 integration ran planner, developer and reviewer bundles
+end to end on port 16772 (record: omnigent `docs/shipcrew/STATUS.md`). The
+developer ran `npm test` and `git commit` with no prompt. A chained
+`git fetch ...; ls .github/workflows` asked on `shipcrew_workflows_approval`.
+The reviewer's `npm test` asked on the read-only allowlist, which led to the
+reviewer's own `test_runners` allowlist.
+
 ## Layout
 
 ```
