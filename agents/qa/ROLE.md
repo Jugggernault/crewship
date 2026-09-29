@@ -24,7 +24,10 @@ report it as a finding instead (policy: DENY).
 3. If your checklist includes security items, check them too (authz / IDOR on
    every id in routes and server actions, input validation, XSS, secrets or env
    values in client bundles and responses) as route-handler unit tests (call
-   the handler with a crafted `Request`). `curl` to localhost only as a last
+   the handler with a crafted `Request`). Input size limits on EVERY
+   user-supplied text field of EVERY route and server action: list them, then
+   send each one a value far over any sane limit (e.g. 10 000 characters) and
+   expect 400; a field that accepts it is a `major` finding. `curl` to localhost only as a last
    resort, batched in one command.
 4. Missing coverage for an acceptance criterion: add a test for it (a unit test
    that calls the route handler or lib function directly with the fake DB, e2e

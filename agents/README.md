@@ -145,7 +145,7 @@ are configured from `_shared/policies/`:
 | policy | fragment | effect |
 |---|---|---|
 | `shipcrew_shell_allowlist` | `shell_allowlist_<profile>.yaml` | A shell command runs with **no prompt** when every simple command in it (split on `;` `&&` `\|\|` `\|` `&` and newlines, quote-aware) matches the role's allowlist (so `a 2>&1 \| tail -5; b \|\| c && d &` and a trailing `wait` pass when each part does). Anything else is **ASK**. So is a command with `$(..)`, backticks, `<(..)` or a heredoc, except Claude Code's `git commit -m "$(cat <<'EOF' ... EOF)"` idiom. An env prefix is allowed only for known names (`CI`, `CHROMIUM_PATH`, `PORT`, `NODE_ENV`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, `NEXT_TELEMETRY_DISABLED`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`, `DEBUG` ...), its value may be `${PORT:-3000}`. Variables: `$?` `$#` `$$` `$!` and `${PIPESTATUS[n]}` always pass; `$VAR` / `${VAR}` / `${VAR:-x}` need a vetted name (the env prefixes, `HOME`, `PWD`, `USER`, `PATH`, `TMPDIR`, or a name assigned earlier in the same command; `echo $DATABASE_URL` asks). They pass anywhere inside an expansion-safe read-only command (the `read_only:` list: `read_only` + `git_read` entries without a `!banned` option or glob word, not `cd`/`printf`/`find`/`sed`/`jq`...). In any other allowlisted command (`npx next start -p ${PORT:-3000}`, `pkill -f "next start -p $PORT"`, `curl localhost:$PORT/x`, `npx vitest --port $PORT`) a vetted name passes when the command does not assign it (its value comes from the session environment), it is a plain argument (not the program, not an option name), the program writes no file or git state (`git`, `cp`/`mv`/`rm`/`mkdir`/`tee`..., `sed`, `find`... always ask), and the command matches with the `:-` default (or a typical value) in its place, so a banned option hidden in a default is still refused. A bare `S=/path;` makes the rest of the chain read-only-only, and `PATH`/`LD_*`/`GIT_*`/`NODE_*`/... assignments ask. A write target with a variable asks. | `timeout`/`time`/`nohup`, `/usr/bin/` and `node_modules/.bin/` prefixes, `pnpm exec` and `git --no-pager` are unwrapped first. |
-| `shipcrew_owned_paths` | `owned_paths.yaml` | A write outside the task's `owned_paths` is **ASK**. That covers Write/Edit/MultiEdit/NotebookEdit/`sys_os_write`, shell redirections, `cp`/`mv`/`rm`/`touch`/`mkdir`/`tee`/`chmod`, `git mv`/`rm`/`restore`/`checkout --`, `prettier --write`, `eslint --fix`, `ruff format`, and dependency changes (`npm install <pkg>` and similar). A write to `package.json`, a lockfile or `pyproject.toml`, at any depth, is **ASK** unless the task lists that file by name; owning `package.json` (or `pyproject.toml`) by name owns the lockfiles and package-manager files next to it (`pnpm-workspace.yaml`, `.npmrc`, `.nvmrc`, `.node-version`; same rule in the PR loop's diff check). `cd` and `git -C` are tracked. Always free: build output and caches (`node_modules`, `.next`, `dist`, `coverage`, `test-results` ...) and, outside the worktree, `/tmp` and `/dev/null`. Reads are never gated. |
+| `shipcrew_owned_paths` | `owned_paths.yaml` | A write outside the task's `owned_paths` is **ASK**. That covers Write/Edit/MultiEdit/NotebookEdit/`sys_os_write`, shell redirections, `cp`/`mv`/`rm`/`touch`/`mkdir`/`tee`/`chmod`, `git mv`/`rm`/`restore`/`checkout --`, `prettier --write`, `eslint --fix`, `ruff format`, and dependency changes (`npm install <pkg>` and similar). A write to `package.json`, a lockfile or `pyproject.toml`, at any depth, is **ASK** unless the task lists that file by name; owning `package.json` (or `pyproject.toml`) by name owns the lockfiles and package-manager files next to it (`pnpm-workspace.yaml`, `.npmrc`, `.nvmrc`, `.node-version`; same rule in the PR loop's diff check). `cd` and `git -C` are tracked. Always free: build output and caches (`node_modules`, `.next`, `dist`, `coverage`, `test-results` ...) and, outside the worktree, `/tmp` and `/dev/null`. Reads are never gated. A write to a file another in-progress task of the mission owns is **DENY** with a hint to work against the shared contract (no card; see below). |
 | `shipcrew_test_writes_only` | `test_writes_<role>.yaml` (qa, security) | Verify roles write **test files only**: `test/**`, `tests/**`, `e2e/**` (top level), `**/__tests__/**`, `**/__snapshots__/**`, `**/*.test.*`, `**/*.spec.*`, plus their report file. Any other write (write tools and shell targets, as for owned paths) is **DENY**, with a reason that says to report the defect instead: the board turns a `FAIL` into a developer fix task. Combined with `shipcrew_owned_paths` (`owned_paths_<role>.yaml`, report file free), a test outside the task's owned paths still ASKs. The PR loop re-checks the whole diff: a non-test file in a verify PR needs a human approval. Add-only: deleting, renaming away or truncating a test file that exists on `origin/main` (another task's: `rm`, `git rm`, `mv`/`git mv` source, `truncate`, `>`, a full `Write`) is **DENY**; `Edit` and `>>` pass, and a removal that cannot be checked (no git answer) is refused. |
 | `shipcrew_orchestrator_push_guard` | `orchestrator_push_guard.yaml` | Every `git push` must name refspecs, and each one must be `shipcrew/<first 8 chars of the task id>-<slug>` (the one branch scheme the server's worktrees use too). Anything else is **DENY**. `gh pr merge` / `repo delete` / `release create` are **ASK**. |
 
@@ -188,16 +188,33 @@ The groups:
   `--dir`, `--filter`, `-r`). A dependency change writes `package.json` + the
   lockfile, so owned paths let it through only for the task that owns
   `package.json` (the Foundation); anyone else gets an ASK.
-- `fs_edit`: `sed -i [-E] [-e] 's<d>a<d>b<d>[gIi0-9]' FILE...` (substitutions
-  only: no `w`/`e`/`r`, no `-i.bak`, no `-f`) and `perl -pi -e 's/a/b/g' FILE...`
-  (one substitution, no `/e`, no `@`, no `$var` other than `$1`/`$&`, no
-  `(?{..})`). The edited files are write targets (owned paths, workflows guard).
+- `fs_edit`: `sed -i [-E] [-e] '[N[,M]]s<d>a<d>b<d>[gIi0-9]' FILE...` (ONE
+  simple substitution: no second command or `-e`, no regex address, no
+  `w`/`e`/`r`, no newline or `\n` in the replacement, no `-i.bak`, no `-f`) and
+  `perl -pi -e 's/a/b/g' FILE...` (one substitution, no `/e`, no `@`, no `$var`
+  other than `$1`/`$&`, no `(?{..})`). The edited files are write targets
+  (owned paths, workflows guard). Any other `sed -i` / `perl -pi` (`/re/d`,
+  `/re/,+1d`, `s/a/b/; s/c/d/`, `3a text`, `$VAR` in the script) is **DENY**
+  for the roles that have this group, with the hint "Edit files with the Edit
+  tool (it only needs the file to be in your owned paths); sed -i is only for
+  one simple s/// substitution": the agent corrects itself, no card.
 - `dev_tools`: installs from the lockfile only (`npm ci`, `pnpm install
   --frozen-lockfile`, `uv sync`, `uv pip install -r/-e`), plus `npm test`,
   `npm run <script>`, the pnpm/yarn equivalents, `node --test`, `vitest`,
   `jest`, `playwright test`, `tsc`, `eslint`, `prettier`, `next build/lint`,
   `biome`, `stylelint`, `@google/design.md lint`, `pytest` (plain, `uv run`,
-  `.venv/bin`), `ruff mypy pyright` and `black --check`.
+  `.venv/bin`), `ruff mypy pyright` and `black --check`. Package-manager
+  output flags are dropped before matching (`-s`/`--silent`, `--loglevel
+  <x>`, `--reporter=<x>`, `--color`/`--no-color`, and `-w` outside a
+  dependency command), in front of the subcommand and after `run`: `pnpm -s
+  lint`, `npm run --silent typecheck`, `pnpm -s run test` match their plain
+  entries (no `-s` entries needed); `pnpm -s add x` gets the verdict of `pnpm
+  add x`.
+- `test_runners` (reviewer): `npm/pnpm/yarn test`, `npm/pnpm run
+  test|lint|typecheck`, `pnpm lint|typecheck`, `vitest run`, `jest`, `node
+  --test`, `pytest`, `tsc --noEmit`, a lockfile install. No build and no e2e:
+  CI already ran them green on the reviewed commit, and the reviewer never
+  re-runs them.
 - `run_app` (verify roles): `./init.sh`, `npm start`, `next dev/start`, `ps ss
   lsof kill pkill`.
 - `local_http` (builders, scaffolder, verify roles): `curl` to
@@ -219,8 +236,21 @@ The groups:
 
 **How it reaches the session.** When the board starts a task, the server
 (`omnigent/shipcrew/sessions.py`) packs the role bundle and writes the task's
-`owned_paths` and absolute worktree path over the two `# @task.*` slots of
-`shipcrew_owned_paths` (`inject_task_contract`). The contract is stored with
+`owned_paths` and absolute worktree path over the `# @task.*` slots of
+`shipcrew_owned_paths` (`inject_task_contract`), plus the mission's other
+active tasks (ready / running / review / intervention: title + owned paths, a
+start-time snapshot) in `# @task.other_tasks`. A write to a file one of them
+owns is **DENY** with the hint "<path> belongs to task '<title>' (in
+progress). Do not edit it; work against the shared contract (e.g.
+lib/api-client.ts, lib/db.ts) and mock it in your tests; if the contract lacks
+something, say so in your final reply." (a file nobody else owns still asks).
+At start the server also grants the task the existing test files whose only
+app imports are modules it owns (`omnigent/shipcrew/inherited_tests.py`:
+static scan of `test/**`, `tests/**`, `e2e/**`, `**/*.test.*`, `**/*.spec.*`
+at the base ref; any import of a module it does not own, or no app import at
+all, and the test is not granted). An owned-paths ASK a human accepts is
+recorded on the task (`approved_paths`) and the merge gate does not hold the
+PR again for those paths. The contract is stored with
 the session's bundle on the server, so the agent cannot edit it. If the
 bundle is started without a task contract (not from a board card), the owned
 paths policy abstains.
@@ -420,9 +450,15 @@ For each bundle, the validator does the following:
     launch args (claude-native) or spawn env (claude-sdk) carry the strict flag;
 - checks `setting_sources` is `project,local` and reaches the launch args
   (`--setting-sources`) or the SDK spawn env;
-- builds every guardrail through omnigent's factory path and runs 228
-  tool-call cases per bundle (215 under the feature contract, 13 under a
-  Foundation contract that owns `**` + `package.json`), including every
+- builds every guardrail through omnigent's factory path and runs 256
+  tool-call cases per bundle (240 under the feature contract, with one other
+  in-progress task owning `lib/polls-api/**`; 16 under a Foundation contract
+  that owns `**` + `package.json`), including round 7's refusals with a hint
+  (complex `sed -i` / `perl -pi`, another task's file, next to the simple
+  substitution and the nobody's-file ASK that stay), the package-manager
+  output flags (`pnpm -s lint`, `npm run --silent typecheck`, `pnpm -s run
+  test`; `pnpm -s build` / `pnpm build` / `next build` still ASK for the
+  reviewer; `pnpm -s add` = `pnpm add`, `pnpm -s -w add` refused), and every
   command a live run asked for that must now pass (`echo EXIT=$?`, vetted
   `$VAR` reads, `S=/p; cat $S/x`, `npm install -D ... | grep | head`, the
   `git mv || mv; sed -i; npm run ...` chain, background `&` + `wait`,

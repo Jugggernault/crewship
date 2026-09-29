@@ -103,6 +103,9 @@ SETTING_SOURCES = ["project", "local"]
 
 REPO_PATH = "/work/mission"
 TASK_OWNED = ["app/**", "e2e/cart.spec.ts"]
+# The mission's other active tasks at start (injected like the board does):
+# their files are DENY with a hint, not an approval card.
+OTHER_TASKS = [{"title": "Polls API", "owned_paths": ["lib/polls-api/**"]}]
 BRANCH = "shipcrew/1a2b3c4d-cart"  # shipcrew/<first 8 chars of the task id>-<slug>
 
 BUILDERS = ("builder", "scaffolder")  # owned paths + git/file writes
@@ -124,6 +127,12 @@ def _bash(cmd: str) -> tuple[str, dict[str, str]]:
 def _only(profiles: tuple[str, ...], verdict: str = "ALLOW", *, other: str = "ASK") -> dict[str, str]:
     """``verdict`` for *profiles* (and the orchestrator, which has no allowlist), ``other`` else."""
     return {"*": other, "orchestrator": "ALLOW", **{p: verdict for p in profiles}}
+
+
+def _edit_hint() -> dict[str, str]:
+    """A complex in-place edit: DENY (use the Edit tool) for the roles that edit in
+    place, DENY for the verify roles (not a test file), ASK for the read-only ones."""
+    return {**_no_verify(_only(())), **{p: "DENY" for p in BUILDERS}}
 
 
 def _no_verify(expected: dict[str, str]) -> dict[str, str]:
@@ -528,15 +537,54 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("npm install -D, package.json not owned", *_bash("npm install -D vitest"), _no_verify(_only(()))),
     ("sed -i outside owned", *_bash("sed -i 's/a/b/' src/other.ts"), _no_verify(_only(()))),
     ("sed -i owned", *_bash("sed -i 's|a|b|g' app/page.tsx"), _no_verify(_only(BUILDERS))),
-    ("sed -i w flag", *_bash("sed -i 's/a/b/w /tmp/x' app/page.tsx"), _no_verify(_only(()))),
-    ("sed -i e command", *_bash("sed -i '1e touch /tmp/x' app/page.tsx"), _no_verify(_only(()))),
+    ("sed -i w flag", *_bash("sed -i 's/a/b/w /tmp/x' app/page.tsx"), _edit_hint()),
+    ("sed -i e command", *_bash("sed -i '1e touch /tmp/x' app/page.tsx"), _edit_hint()),
     ("perl -pi owned", *_bash("perl -pi -e 's/a/b/g' app/page.tsx"), _no_verify(_only(BUILDERS))),
     (
         "perl -pi code",
         *_bash("perl -pi -e 's/a/@{[system(\"id\")]}/' app/page.tsx"),
-        _no_verify(_only(())),
+        _edit_hint(),
     ),
-    ("perl -e code", *_bash("perl -pi -e 'system(1)' app/page.tsx"), _no_verify(_only(()))),
+    ("perl -e code", *_bash("perl -pi -e 'system(1)' app/page.tsx"), _edit_hint()),
+    # round 7: a complex in-place edit is refused with a hint (use the Edit tool),
+    # no approval card; one simple s/// stays ALLOW (above)
+    ("sed -i address range", *_bash("sed -i '/re/,+1d' app/page.tsx"), _edit_hint()),
+    ("sed -i delete lines", *_bash("sed -i '/console.log/d' app/page.tsx"), _edit_hint()),
+    ("sed -i two commands", *_bash("sed -i 's/a/b/; s/c/d/' app/page.tsx"), _edit_hint()),
+    ("sed -i two -e", *_bash("sed -i -e 's/a/b/' -e 's/c/d/' app/page.tsx"), _edit_hint()),
+    ("sed -i newline in replacement", *_bash("sed -i -E 's/(x)/\\1\\n  y/' app/page.tsx"), _edit_hint()),
+    ("sed -i insert line", *_bash("sed -i '3a extra' app/page.tsx"), _edit_hint()),
+    ("perl -pi two substitutions", *_bash("perl -pi -e 's/a/b/; s/c/d/' app/page.tsx"), _edit_hint()),
+    ("sed -i -E simple", *_bash("sed -i -E 's/(a+)/\\1b/' app/page.tsx"), _no_verify(_only(BUILDERS))),
+    ("sed -i complex outside owned", *_bash("sed -i '/x/d' src/other.ts"), _edit_hint()),
+    ("sed -i complex in a substitution", *_bash("cat $(sed -i '/x/d' app/page.tsx)"), _only(())),
+    # round 7: another in-progress task's file is refused with a hint
+    (
+        "Write another task's file",
+        "Write",
+        {"file_path": f"{REPO_PATH}/lib/polls-api/route.ts", "content": "x"},
+        _write_verdicts("DENY"),
+    ),
+    ("touch another task's file", *_bash("touch lib/polls-api/x.ts"), _no_verify({**_only(()), **{p: "DENY" for p in BUILDERS}})),
+    (
+        "Write nobody's file still asks",
+        "Write",
+        {"file_path": f"{REPO_PATH}/lib/free.ts", "content": "x"},
+        _write_verdicts("ASK"),
+    ),
+    # round 7: package-manager output flags match the plain entries
+    ("pnpm -s lint", *_bash("pnpm -s lint"), _only(TESTERS)),
+    ("pnpm --silent typecheck", *_bash("pnpm --silent typecheck"), _only(TESTERS)),
+    ("npm run --silent typecheck", *_bash("npm run --silent typecheck"), _only(TESTERS)),
+    ("npm run -s test", *_bash("npm run -s test"), _only(TESTERS)),
+    ("pnpm -s run test", *_bash("pnpm -s run test"), _only(TESTERS)),
+    ("pnpm --loglevel warn test", *_bash("pnpm --loglevel warn --no-color test"), _only(TESTERS)),
+    ("pnpm -s build (not the reviewer)", *_bash("pnpm -s build"), _only(RUNNERS)),
+    ("pnpm -s e2e (not the reviewer)", *_bash("pnpm -s e2e"), _only(RUNNERS)),
+    ("pnpm build (not the reviewer)", *_bash("pnpm build"), _only(RUNNERS)),
+    ("npx next build (not the reviewer)", *_bash("npx next build"), _only(RUNNERS)),
+    ("pnpm -s add, package.json not owned", *_bash("pnpm -s add zod"), _no_verify(_only(()))),
+    ("pnpm -s -g add", *_bash("pnpm -s add -g zod"), _no_verify(_only(()))),
     # verify roles add tests, never remove another task's (seen live: `git rm` of a
     # "redundant" spec). No repo at REPO_PATH here: a removal that cannot be
     # checked against origin/main is refused too.
@@ -649,6 +697,14 @@ CONTRACT_CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         _no_verify(_only(BUILDERS)),
     ),
     ("pnpm add (foundation)", *_bash("pnpm add zod"), _no_verify(_only(BUILDERS))),
+    ("pnpm -s add (foundation)", *_bash("pnpm -s add zod"), _no_verify(_only(BUILDERS))),
+    ("pnpm -w add (foundation)", *_bash("pnpm -s -w add zod"), _no_verify(_only(()))),
+    (
+        "Write under an other task's glob, owned too (foundation)",
+        "Write",
+        {"file_path": f"{REPO_PATH}/lib/polls-api/route.ts", "content": "x"},
+        _write_verdicts("ALLOW"),
+    ),
     ("npm install pkg (foundation)", *_bash("npm install lodash"), _no_verify(_only(BUILDERS))),
     (
         "rename config, sed package.json, check (foundation)",
@@ -762,7 +818,10 @@ def _with_task_contract(bundle: Path, owned: list[str] = TASK_OWNED) -> AgentSpe
         config = copy / "config.yaml"
         config.write_text(
             inject_task_contract(
-                config.read_text(encoding="utf-8"), owned_paths=owned, root=REPO_PATH
+                config.read_text(encoding="utf-8"),
+                owned_paths=owned,
+                root=REPO_PATH,
+                other_tasks=OTHER_TASKS,
             ),
             encoding="utf-8",
         )
@@ -785,7 +844,11 @@ def _check_guardrails(name: str, spec: AgentSpec, errors: list[str]) -> int:
         injected = next(
             p for p in spec.guardrails.policies if p.name == OWNED_PATHS_POLICY
         ).function.arguments
-        if injected.get("owned_paths") != TASK_OWNED or injected.get("root") != REPO_PATH:
+        if (
+            injected.get("owned_paths") != TASK_OWNED
+            or injected.get("root") != REPO_PATH
+            or injected.get("other_tasks") != OTHER_TASKS
+        ):
             errors.append(f"task contract not injected: {injected}")
     if profile in VERIFIERS:
         tests = next(
