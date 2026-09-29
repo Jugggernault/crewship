@@ -141,6 +141,45 @@ the hook fails to "ask". claude-sdk bundles (planner, orchestrator) keep
 omnigent's `auto`: the SDK pre-approves its tools and the same guardrails
 gate them in-process. Nothing uses `bypassPermissions`.
 
+### What the allowlists do not stop (accepted risks)
+
+The shell allowlists gate the commands an agent *types*. They do not sandbox
+the code those commands run. These risks are accepted on purpose:
+
+- **Test runners and `npm run <script>` run arbitrary code.** A builder writes
+  test files and then runs them (`npm test`, `node --test`, `vitest`,
+  `pytest`), and `npm run *` runs any `package.json` script. So a builder can
+  execute anything the OS user can, including writing outside its owned
+  paths. The same holds for the reviewer's and qa's test runners, which run
+  the branch's code. The backstop is on the server: before a merge, the PR
+  loop checks the **whole diff** against the task's `owned_paths` and against
+  the `APPROVALS.md` rules. The defaults (`.github/**`, `auth/**`,
+  migrations, `.env*`, `infra/**`, `agents/**`) always apply, and a repo file
+  can only add rules. Any match is held for `POST /tasks/{id}/approve`,
+  whoever or whatever wrote the file. Nothing is pushed except by the server,
+  and only to the task branch.
+- **`npx <name>`** is allowlisted only for fixed package names (`vitest`,
+  `jest`, `tsc`, `eslint`, `prettier`, `next`, `biome`, `stylelint`,
+  `@google/design.md`, and for the scaffolder `create-next-app@*`, `shadcn@*`,
+  `drizzle-kit`). A package that is not installed is downloaded from the npm
+  registry under that name. Typosquatting is ruled out because the names are
+  exact, but a compromised upstream release is not. `npx -p <pkg>`,
+  `npm exec --package=<pkg>` and any other name ask.
+- **`kill` / `pkill`** (qa and security, `run_app`) can end any process of the
+  OS user, including the omnigent server or other agents. This is accepted so
+  those roles can stop the dev servers they start. Run the board as a
+  dedicated user if that matters to you.
+- **`curl` to localhost** (qa, security) can reach every local service,
+  including the omnigent API. Run the server with auth, so that an agent
+  without a token cannot approve its own cards or merges.
+- **Parsing is conservative, not perfect.** A command whose words the shell
+  would rewrite always asks: `$VAR`, `${..}` and `$'..'` outside single
+  quotes, brace expansion, a glob in an option name, `$(..)`, backticks and
+  heredocs (Claude Code's commit-message heredoc is the one exception). A
+  refused option also matches its abbreviations (`git reset --har`, `git
+  fetch --upload-p=`) and short-option clusters (`git rebase -xcmd`, `sort
+  -uo`).
+
 ### Live check (2026-09-29)
 
 The test ran on a real stack: `scripts/shipcrew_stack.sh` on port 16771, with
@@ -231,7 +270,7 @@ For each bundle, the validator does the following:
   - instructions are actually read from `AGENTS.md`;
   - bundled skills;
   - the orchestrator's `tools.agents` equals the roles;
-- builds every guardrail through omnigent's factory path and runs 110
+- builds every guardrail through omnigent's factory path and runs 117
   tool-call cases per bundle (plus the dispatch cap), expecting a specific
   ALLOW, ASK or DENY for each. The cases cover:
   - allowlisted commands (ALLOW, no prompt);
