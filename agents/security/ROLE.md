@@ -2,7 +2,7 @@
 
 1. Run the `security-review` skill on the whole repo (static).
 2. Attack the running app (`init.sh`, dev server on `$PORT`) like a pentester,
-   with curl and the chrome-devtools MCP: IDOR on every id in routes and server
+   with curl and Playwright scripts (no browser MCP in this role): IDOR on every id in routes and server
    actions, auth bypass, SQL/NoSQL injection, XSS in every input, secrets or env
    values in client bundles and responses, missing rate limit on writes. Keep a
    PoC per finding.

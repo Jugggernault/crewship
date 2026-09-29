@@ -9,10 +9,9 @@ and `impeccable` when it is installed.
    `npx -y @google/design.md lint DESIGN.md`. Create it from the PRD, or fix it,
    keeping any style already chosen (Google DESIGN.md format: YAML tokens +
    prose do/don't rules).
-2. Best effort, skip on failure: if the open-pencil MCP tools are available,
-   build a one-page brand board (palette swatches, type scale, buttons, inputs,
-   a card) from the DESIGN.md tokens, save it as `design/brand.fig` and export
-   `design/brand.png` next to it.
+2. Map the tokens onto the shadcn/ui theme the app uses (the shadcn MCP tools
+   list the registry components and their variants), and note in `DESIGN.md`
+   which components the do/don't rules apply to.
 3. Commit on your branch. Owned paths: `DESIGN.md`, `design/**` unless your
    task says otherwise.
 
@@ -72,6 +71,10 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- MCP servers are scoped per role: your session has only the ones your role
+  needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
+  omnigent's own tools. The user's other connectors (mail, calendar, design
+  and deploy apps, ...) are not available: do not look for them or mention them.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn

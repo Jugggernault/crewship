@@ -4,7 +4,7 @@
 
 1. Run the `security-review` skill on the whole repo (static).
 2. Attack the running app (`init.sh`, dev server on `$PORT`) like a pentester,
-   with curl and the chrome-devtools MCP: IDOR on every id in routes and server
+   with curl and Playwright scripts (no browser MCP in this role): IDOR on every id in routes and server
    actions, auth bypass, SQL/NoSQL injection, XSS in every input, secrets or env
    values in client bundles and responses, missing rate limit on writes. Keep a
    PoC per finding.
@@ -71,6 +71,10 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- MCP servers are scoped per role: your session has only the ones your role
+  needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
+  omnigent's own tools. The user's other connectors (mail, calendar, design
+  and deploy apps, ...) are not available: do not look for them or mention them.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn

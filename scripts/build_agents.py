@@ -14,6 +14,14 @@ into each bundle:
   A fragment line ``# @include allowlists/<group>`` is replaced by the lines of
   ``agents/_shared/policies/allowlists/<group>.yaml``, at the same indentation
   (the per-role shell allowlists share their command groups this way).
+* the MCP scoping of ``executor.config``, between the indented
+  ``# >>> shipcrew-mcp: <server> ...`` and ``# <<< shipcrew-mcp`` markers, from
+  ``agents/_shared/mcp/<server>.json`` (one server object each):
+  ``strict_mcp_config: true`` always (the session gets none of the host user's
+  own MCP servers, plugins or claude.ai connectors), plus ``mcp_config`` with
+  the listed servers. omnigent turns them into ``--strict-mcp-config`` /
+  ``--mcp-config`` (``omnigent/shipcrew/launch_args.py`` in the fork); its own
+  relay (``sys_*`` tools) is added on top.
 
 Edit ROLE.md, COMMON.md or a policy fragment, then run::
 
@@ -26,6 +34,7 @@ Standard library only, so it runs without the omnigent environment.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -35,6 +44,7 @@ AGENTS = REPO / "agents"
 SHARED = AGENTS / "_shared"
 COMMON = SHARED / "COMMON.md"
 POLICIES = SHARED / "policies"
+MCP = SHARED / "mcp"
 
 # Approvals (ASK) wait a full day: an approval card should outlive a human
 # stepping away, as in omnigent's polly.
@@ -44,6 +54,12 @@ _INCLUDE_RE = re.compile(r"^(?P<indent>[ \t]*)# @include (?P<name>[A-Za-z0-9_./-
 
 _MARKER_RE = re.compile(
     r"^# >>> shipcrew-guardrails:(?P<names>[^\n]*)\n.*?^# <<< shipcrew-guardrails[^\n]*\n",
+    re.MULTILINE | re.DOTALL,
+)
+
+
+_MCP_MARKER_RE = re.compile(
+    r"^(?P<indent>[ \t]*)# >>> shipcrew-mcp:(?P<names>[^\n]*)\n.*?^[ \t]*# <<< shipcrew-mcp[^\n]*\n",
     re.MULTILINE | re.DOTALL,
 )
 
@@ -108,13 +124,49 @@ def render_guardrails(names: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def mcp_servers(names: list[str]) -> dict[str, object]:
+    """``{"mcpServers": {...}}`` built from the named ``_shared/mcp`` fragments."""
+    servers: dict[str, object] = {}
+    for name in names:
+        fragment = MCP / f"{name}.json"
+        if not fragment.is_file():
+            raise FileNotFoundError(f"unknown shipcrew MCP server fragment: {fragment}")
+        server = json.loads(fragment.read_text(encoding="utf-8"))
+        if not isinstance(server, dict) or "command" not in server:
+            raise ValueError(f"{fragment}: expected a server object with a command")
+        servers[name] = server
+    return {"mcpServers": servers}
+
+
+def render_mcp(names: list[str], indent: str) -> str:
+    """The ``strict_mcp_config`` / ``mcp_config`` lines for an executor.config block."""
+    lines = [
+        f"# >>> shipcrew-mcp:{''.join(' ' + n for n in names)}",
+        "# GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.",
+        "# Only these MCP servers (plus omnigent's relay), never the host user's own.",
+        "strict_mcp_config: true",
+    ]
+    if names:
+        payload = json.dumps(mcp_servers(names), separators=(",", ":"))
+        # A single-quoted YAML scalar: only ' needs escaping (as '').
+        quoted = payload.replace("'", "''")
+        lines.append(f"mcp_config: '{quoted}'")
+    lines.append("# <<< shipcrew-mcp")
+    return "".join(f"{indent}{line}\n" for line in lines)
+
+
 def render_config(config_text: str, path: Path) -> str:
-    """Replace the guardrails marker region of *config_text*."""
+    """Replace the guardrails and MCP marker regions of *config_text*."""
     match = _MARKER_RE.search(config_text)
     if match is None:
         raise ValueError(f"{path}: missing '# >>> shipcrew-guardrails:' ... '# <<<' markers")
     names = match.group("names").split()
-    return config_text[: match.start()] + render_guardrails(names) + config_text[match.end() :]
+    text = config_text[: match.start()] + render_guardrails(names) + config_text[match.end() :]
+    mcp = _MCP_MARKER_RE.search(text)
+    if mcp is None:
+        raise ValueError(f"{path}: missing '# >>> shipcrew-mcp:' ... '# <<<' markers")
+    block = render_mcp(mcp.group("names").split(), mcp.group("indent"))
+    return text[: mcp.start()] + block + text[mcp.end() :]
 
 
 def build(check: bool) -> list[Path]:

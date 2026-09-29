@@ -13,6 +13,11 @@ executor:
   config:
     harness: claude-sdk
     permission_mode: auto
+    # >>> shipcrew-mcp:
+    # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
+    # Only these MCP servers (plus omnigent's relay), never the host user's own.
+    strict_mcp_config: true
+    # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
 instructions: AGENTS.md

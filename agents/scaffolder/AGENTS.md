@@ -9,7 +9,7 @@ and `shipcrew:design-lock`.
 1. Scaffold the app with the platform/stack from `.shipcrew/plan.json`, using
    non-interactive flags only (the repo already exists; do not re-run `git init`).
 2. Wire the `DESIGN.md` tokens into Tailwind / NativeWind (design-lock skill).
-   Web: `npx shadcn init` and register the shadcn MCP for the project.
+   Web: `npx shadcn init` (your session already has the shadcn MCP tools).
 3. Data: if `needs_db`, Neon Postgres + Drizzle schema, migration and seed
    (the environment already carries the credentials; do not read `.env*`).
    Otherwise create `lib/db.ts` with the `data_model` entities, per the common
@@ -82,6 +82,10 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- MCP servers are scoped per role: your session has only the ones your role
+  needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
+  omnigent's own tools. The user's other connectors (mail, calendar, design
+  and deploy apps, ...) are not available: do not look for them or mention them.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn
