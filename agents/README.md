@@ -144,8 +144,8 @@ are configured from `_shared/policies/`:
 
 | policy | fragment | effect |
 |---|---|---|
-| `shipcrew_shell_allowlist` | `shell_allowlist_<profile>.yaml` | A shell command runs with **no prompt** when every simple command in it (split on `;` `&&` `\|\|` `\|` `&` and newlines, quote-aware) matches the role's allowlist (so `a 2>&1 \| tail -5; b \|\| c && d &` and a trailing `wait` pass when each part does). Anything else is **ASK**. So is a command with `$(..)`, backticks, `<(..)` or a heredoc, except Claude Code's `git commit -m "$(cat <<'EOF' ... EOF)"` idiom. An env prefix is allowed only for known names (`CI`, `CHROMIUM_PATH`, `PORT`, `NODE_ENV`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, `NEXT_TELEMETRY_DISABLED`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`, `DEBUG` ...), its value may be `${PORT:-3000}`. Variables: `$?` `$#` `$$` `$!` always pass; `$VAR` / `${VAR}` / `${VAR:-x}` pass only inside an expansion-safe read-only command (the `read_only:` list: `read_only` + `git_read` entries without a `!banned` option or glob word, not `cd`/`printf`/`find`/`sed`/`jq`...) and only for vetted names (the env prefixes, `HOME`, `PWD`, `USER`, `PATH`, `TMPDIR`, or a name assigned earlier in the same command); `echo $DATABASE_URL` asks. A bare `S=/path;` makes the rest of the chain read-only-only, and `PATH`/`LD_*`/`GIT_*`/`NODE_*`/... assignments ask. A write target with a variable asks. | `timeout`/`time`/`nohup`, `/usr/bin/` and `node_modules/.bin/` prefixes, `pnpm exec` and `git --no-pager` are unwrapped first. |
-| `shipcrew_owned_paths` | `owned_paths.yaml` | A write outside the task's `owned_paths` is **ASK**. That covers Write/Edit/MultiEdit/NotebookEdit/`sys_os_write`, shell redirections, `cp`/`mv`/`rm`/`touch`/`mkdir`/`tee`/`chmod`, `git mv`/`rm`/`restore`/`checkout --`, `prettier --write`, `eslint --fix`, `ruff format`, and dependency changes (`npm install <pkg>` and similar). A write to `package.json`, a lockfile or `pyproject.toml`, at any depth, is **ASK** unless the task lists that file by name; owning `package.json` (or `pyproject.toml`) by name owns the lockfiles next to it. `cd` and `git -C` are tracked. Always free: build output and caches (`node_modules`, `.next`, `dist`, `coverage`, `test-results` ...) and, outside the worktree, `/tmp` and `/dev/null`. Reads are never gated. |
+| `shipcrew_shell_allowlist` | `shell_allowlist_<profile>.yaml` | A shell command runs with **no prompt** when every simple command in it (split on `;` `&&` `\|\|` `\|` `&` and newlines, quote-aware) matches the role's allowlist (so `a 2>&1 \| tail -5; b \|\| c && d &` and a trailing `wait` pass when each part does). Anything else is **ASK**. So is a command with `$(..)`, backticks, `<(..)` or a heredoc, except Claude Code's `git commit -m "$(cat <<'EOF' ... EOF)"` idiom. An env prefix is allowed only for known names (`CI`, `CHROMIUM_PATH`, `PORT`, `NODE_ENV`, `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, `NEXT_TELEMETRY_DISABLED`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`, `DEBUG` ...), its value may be `${PORT:-3000}`. Variables: `$?` `$#` `$$` `$!` and `${PIPESTATUS[n]}` always pass; `$VAR` / `${VAR}` / `${VAR:-x}` need a vetted name (the env prefixes, `HOME`, `PWD`, `USER`, `PATH`, `TMPDIR`, or a name assigned earlier in the same command; `echo $DATABASE_URL` asks). They pass anywhere inside an expansion-safe read-only command (the `read_only:` list: `read_only` + `git_read` entries without a `!banned` option or glob word, not `cd`/`printf`/`find`/`sed`/`jq`...). In any other allowlisted command (`npx next start -p ${PORT:-3000}`, `pkill -f "next start -p $PORT"`, `curl localhost:$PORT/x`, `npx vitest --port $PORT`) a vetted name passes when the command does not assign it (its value comes from the session environment), it is a plain argument (not the program, not an option name), the program writes no file or git state (`git`, `cp`/`mv`/`rm`/`mkdir`/`tee`..., `sed`, `find`... always ask), and the command matches with the `:-` default (or a typical value) in its place, so a banned option hidden in a default is still refused. A bare `S=/path;` makes the rest of the chain read-only-only, and `PATH`/`LD_*`/`GIT_*`/`NODE_*`/... assignments ask. A write target with a variable asks. | `timeout`/`time`/`nohup`, `/usr/bin/` and `node_modules/.bin/` prefixes, `pnpm exec` and `git --no-pager` are unwrapped first. |
+| `shipcrew_owned_paths` | `owned_paths.yaml` | A write outside the task's `owned_paths` is **ASK**. That covers Write/Edit/MultiEdit/NotebookEdit/`sys_os_write`, shell redirections, `cp`/`mv`/`rm`/`touch`/`mkdir`/`tee`/`chmod`, `git mv`/`rm`/`restore`/`checkout --`, `prettier --write`, `eslint --fix`, `ruff format`, and dependency changes (`npm install <pkg>` and similar). A write to `package.json`, a lockfile or `pyproject.toml`, at any depth, is **ASK** unless the task lists that file by name; owning `package.json` (or `pyproject.toml`) by name owns the lockfiles and package-manager files next to it (`pnpm-workspace.yaml`, `.npmrc`, `.nvmrc`, `.node-version`; same rule in the PR loop's diff check). `cd` and `git -C` are tracked. Always free: build output and caches (`node_modules`, `.next`, `dist`, `coverage`, `test-results` ...) and, outside the worktree, `/tmp` and `/dev/null`. Reads are never gated. |
 | `shipcrew_test_writes_only` | `test_writes_<role>.yaml` (qa, security) | Verify roles write **test files only**: `test/**`, `tests/**`, `e2e/**` (top level), `**/__tests__/**`, `**/__snapshots__/**`, `**/*.test.*`, `**/*.spec.*`, plus their report file. Any other write (write tools and shell targets, as for owned paths) is **DENY**, with a reason that says to report the defect instead: the board turns a `FAIL` into a developer fix task. Combined with `shipcrew_owned_paths` (`owned_paths_<role>.yaml`, report file free), a test outside the task's owned paths still ASKs. The PR loop re-checks the whole diff: a non-test file in a verify PR needs a human approval. Add-only: deleting, renaming away or truncating a test file that exists on `origin/main` (another task's: `rm`, `git rm`, `mv`/`git mv` source, `truncate`, `>`, a full `Write`) is **DENY**; `Edit` and `>>` pass, and a removal that cannot be checked (no git answer) is refused. |
 | `shipcrew_orchestrator_push_guard` | `orchestrator_push_guard.yaml` | Every `git push` must name refspecs, and each one must be `shipcrew/<first 8 chars of the task id>-<slug>` (the one branch scheme the server's worktrees use too). Anything else is **DENY**. `gh pr merge` / `repo delete` / `release create` are **ASK**. |
 
@@ -155,9 +155,9 @@ is expanded by `build_agents.py`:
 
 | profile (roles) | groups |
 |---|---|
-| builder (developer, designer, integrator) | `read_only`, `git_read`, `git_write`, `fs_write`, `dev_tools`, `deps`, `fs_edit` |
+| builder (developer, designer, integrator) | `read_only`, `git_read`, `git_write`, `fs_write`, `dev_tools`, `deps`, `fs_edit`, `local_http` |
 | scaffolder | builder + `scaffold` (create-next-app, shadcn, drizzle-kit, `npm uninstall` / `pnpm remove`) |
-| security, qa (verify roles) | `read_only`, `git_read`, `git_commit` (`git add`, `git commit`), `fs_write`, `dev_tools`, `run_app`; every write target judged by `shipcrew_test_writes_only` + owned paths |
+| security, qa (verify roles) | `read_only`, `git_read`, `git_commit` (`git add`, `git commit`), `fs_write`, `dev_tools`, `run_app`, `local_http`; every write target judged by `shipcrew_test_writes_only` + owned paths |
 | read-only (planner) | `read_only`, `git_read`; `shell_writes: false` |
 | reviewer | `read_only`, `git_read`, `test_runners` (npm test, node --test, vitest run, jest, pytest); `shell_writes: false` |
 | devops | `read_only`, `git_read`, `vercel_read`, `vercel_deploy`; `shell_writes: false` |
@@ -166,7 +166,10 @@ The groups:
 
 - `read_only`: `ls cat head tail wc rg grep find uniq wait`, with
   `find -exec`/`-delete`, `rg --pre` and `printf -v` refused (`uniq IN OUT`
-  is judged as a write). `sed -n` with print scripts only. Also `jq yq`, `sort` without `-o`,
+  is judged as a write). `sed -n` with print scripts only on files, and `sed`
+  as a pipe filter (`@sed:sed_filter`: stdin only, no file operand, no
+  `-i`/`-f`/`-s`, scripts of `s` (no `w`/`e` flag), `y`, `p d q =`..., no
+  `r R w W e a i c`). Also `jq yq`, `sort` without `-o`,
   `diff stat du pwd cd echo printf which` and similar, `python3 -m json.tool`,
   `<tool> --version`, and the `gh pr/run/issue/repo view|list` reads.
 - `git_read`: `status diff log show rev-parse ls-files blame grep merge-base`,
@@ -195,9 +198,17 @@ The groups:
   `jest`, `playwright test`, `tsc`, `eslint`, `prettier`, `next build/lint`,
   `biome`, `stylelint`, `@google/design.md lint`, `pytest` (plain, `uv run`,
   `.venv/bin`), `ruff mypy pyright` and `black --check`.
-- `run_app`: `./init.sh`, `npm start`, `next dev/start`, `ps ss lsof kill
-  pkill`, and `curl` to `localhost`/`127.0.0.1`/`[::1]` only. curl may not
-  write a file: `-o`, `-O`, `-T`, `-K`, `-c`, `-D` and `--proxy` are refused.
+- `run_app` (verify roles): `./init.sh`, `npm start`, `next dev/start`, `ps ss
+  lsof kill pkill`.
+- `local_http` (builders, scaffolder, verify roles): `curl` to
+  `localhost`/`127.0.0.1`/`[::1]`/`0.0.0.0` only, any port and method, `-H`,
+  inline `-d`/`--data*`/`--json`, `-w`, `-s`, `-i`, `-L`, `-m`. `-o FILE` is a
+  write target (owned paths / test writes; `/dev/null` and `/tmp` are free).
+  A file read (`-d @f`, `--data-urlencode n@f`, `-F f=@f`, `-H @f`, `-T f`)
+  only for a relative path inside the cwd that is no `.env*`; `-b` only as
+  `name=value`. Refused: any other host (also `--url`), `-K`/`--config`, `-c`,
+  `-D`, `--trace`, `-O`, `-x`/`--proxy`, `--unix-socket`, `--resolve`,
+  `--connect-to`, `-n` and every option not listed.
 - `vercel_read`: `vercel whoami/ls/inspect/logs` (the global CLI, no `npx`).
   `env`, `domains`, `alias`, `project`, `git connect`, `remove` ... ASK.
 - `vercel_deploy` (the ship stage, exactly): `vercel link --yes --project
@@ -267,12 +278,15 @@ the code those commands run. These risks are accepted on purpose:
   OS user, including the omnigent server or other agents. This is accepted so
   those roles can stop the dev servers they start. Run the board as a
   dedicated user if that matters to you.
-- **`curl` to localhost** (qa, security) can reach every local service,
+- **`curl` to localhost** (qa, security, builders) can reach every local service,
   including the omnigent API. Run the server with auth, so that an agent
   without a token cannot approve its own cards or merges.
+- **Vetted variables are trusted.** `$PORT`, `$CHROMIUM_PATH`, `$HOME`... in
+  a runner or curl argument take the session environment's value, which the
+  agent does not set (an assignment in the same command makes it untrusted).
 - **Parsing is conservative, not perfect.** A command whose words the shell
-  would rewrite always asks: `$VAR`, `${..}` and `$'..'` outside single
-  quotes, brace expansion, a glob in an option name, `$(..)`, backticks and
+  would rewrite asks unless the rules above admit it: other `$VAR`, complex
+  `${..}` and `$'..'` outside single quotes, brace expansion, a glob in an option name, `$(..)`, backticks and
   heredocs (Claude Code's commit-message heredoc is the one exception). A
   refused option also matches its abbreviations (`git reset --har`, `git
   fetch --upload-p=`) and short-option clusters (`git rebase -xcmd`, `sort
@@ -328,12 +342,19 @@ fork) reads the verdict line and the findings JSON block:
   the reviewer is skipped because the diff is tests-only, merge).
 - `FAIL`, or a blocker/major finding: ONE developer task `Fix: <title>` in the
   same mission (findings with `file:line` and repro, the report file, "add a
-  regression test"; owned paths = the files the findings name, else the verify
-  task's own), Ready. Tests the verify task wrote stay on a local branch
+  regression test", fix the cheap minor findings too; owned paths = the files
+  every finding names, minor ones included, else the verify task's own), Ready. Tests the verify task wrote stay on a local branch
   `shipcrew-tests/<id8>-<n>` named in the fix body (`git checkout <branch> --
   <files>`). The verify card goes back to Ready with the fix in `depends_on`
   and re-runs from the merged fix. After 2 fix cycles it is held in
   Intervention with the reason.
+
+Worktrees (task, reviewer checkout, integrator, ship) are prepared by the
+server before a session starts in them (`omnigent/shipcrew/worktree_prep.py`):
+`node_modules` seeded from the main checkout (else, for a reviewer, from the
+task worktree at the same head), and `/AGENTS.md` / `/CLAUDE.md` added to the
+repo's `info/exclude` when the repo does not track them (Next 16 `next dev` /
+`next build` write them), so `git add -A` never commits them.
 
 The planner never gives a verify role an implementation task, and for a small
 PRD (5 features or fewer) plans one final `qa` task whose checklist includes
@@ -399,13 +420,21 @@ For each bundle, the validator does the following:
     launch args (claude-native) or spawn env (claude-sdk) carry the strict flag;
 - checks `setting_sources` is `project,local` and reaches the launch args
   (`--setting-sources`) or the SDK spawn env;
-- builds every guardrail through omnigent's factory path and runs 189
-  tool-call cases per bundle (180 under the feature contract, 9 under a
+- builds every guardrail through omnigent's factory path and runs 228
+  tool-call cases per bundle (215 under the feature contract, 13 under a
   Foundation contract that owns `**` + `package.json`), including every
   command a live run asked for that must now pass (`echo EXIT=$?`, vetted
   `$VAR` reads, `S=/p; cat $S/x`, `npm install -D ... | grep | head`, the
   `git mv || mv; sed -i; npm run ...` chain, background `&` + `wait`,
-  `PORT=${PORT:-3000}`) and the negative cases behind them (plus the dispatch cap), expecting a specific
+  `PORT=${PORT:-3000}`; live run 2: `pnpm exec next start -p ${PORT:-3000}`,
+  `pkill -f "next start -p ${PORT:-3000}"; true`, `curl -X POST ... -d '{bad'`
+  and `curl localhost:${PORT:-3000}/favicon.ico`, `... | tail -5; echo
+  rc=${PIPESTATUS[0]}`, `... | sed 's/\x1b\[[0-9;]*m//g' | grep`, writing
+  `pnpm-workspace.yaml` under the Foundation contract) and the negative cases
+  behind them (remote curl, `-d @.env`, `-T /etc/passwd`, `--config`, proxies,
+  `-o` outside the worktree or over a source, assigned / unvetted variables, a
+  variable as the program or an option name or in a git / file writer, `sed`
+  `w`/`e`/`r` and file operands; plus the dispatch cap), expecting a specific
   ALLOW, ASK or DENY for each. The cases cover:
   - allowlisted commands (ALLOW, no prompt);
   - other commands (ASK);

@@ -24,3 +24,4 @@ shipcrew_shell_allowlist:
         # @include allowlists/deps
         # @include allowlists/fs_edit
         # @include allowlists/scaffold
+        # @include allowlists/local_http

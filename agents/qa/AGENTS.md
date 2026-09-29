@@ -15,14 +15,19 @@ report it as a finding instead (policy: DENY).
 1. Install once if needed (see the common rules), then run the WHOLE existing
    suite in one command (`npm test` / `pnpm test`), plus lint/typecheck/build
    as the CI does. Note every failure.
-2. Walk the PRD "Demo script" once, against a production build on `$PORT`
-   (`./init.sh` or `npm run build && npm start`), in a real browser with the
-   chrome-devtools MCP tools (a headless, isolated `$CHROMIUM_PATH` instance):
-   zero console errors required. Only the steps the checklist needs; no
-   exploratory clicking.
+2. Walk the PRD "Demo script" once, through the repo's Playwright e2e suite
+   (`npx playwright test`: its config's `webServer` builds and starts the app on
+   `$PORT`), adding a spec for the steps it lacks; zero console errors required
+   (assert on `page.on('console')`). Only when the repo has no Playwright
+   config: a production build on `$PORT` (`./init.sh` or `npm run build && npm
+   start`) and the chrome-devtools MCP tools (a headless, isolated
+   `$CHROMIUM_PATH` instance), stopped when done. Only the steps the checklist
+   needs; no exploratory clicking.
 3. If your checklist includes security items, check them too (authz / IDOR on
    every id in routes and server actions, input validation, XSS, secrets or env
-   values in client bundles and responses), with `curl` to localhost.
+   values in client bundles and responses) as route-handler unit tests (call
+   the handler with a crafted `Request`). `curl` to localhost only as a last
+   resort, batched in one command.
 4. Missing coverage for an acceptance criterion: add a test for it (a unit test
    that calls the route handler or lib function directly with the fake DB, e2e
    only when a browser is required). Run the whole suite again in one command.
@@ -107,12 +112,22 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- Edit files with the Edit / Write tools. Never `sed -i` / `perl -pi` with a
+  complex regex (a one-line `sed -i 's/old/new/' <owned file>` is the most you
+  do in the shell): a wrong regex costs a turn to repair, the Edit tool does not.
 - Plain shell: never append `; echo EXIT=$?` (the tool already reports the
   exit code) and do not introduce shell variables (`S=/path; cat $S/x`): write
-  the paths out. A `$VAR` passes only in read-only commands (and as
-  `PORT=${PORT:-3000}` in front of a command). Run Playwright with the repo's
-  own `playwright.config.*` (it reads `PORT` and `CHROMIUM_PATH`), never a
-  config copied to `/tmp`.
+  the paths out. The vetted variables (`$PORT`, `$CHROMIUM_PATH`, `$CI`,
+  `$NODE_ENV`, `$HOME`, `$TMPDIR`, with an optional `${PORT:-3000}` default)
+  may be plain arguments of allowlisted commands (`npx next start -p
+  ${PORT:-3000}`, `curl localhost:$PORT/api/x`) and prefixes
+  (`PORT=${PORT:-3000} npx playwright test`); `${PIPESTATUS[0]}` is fine; any
+  other `$VAR`, or a variable in a git / file command, asks. Run Playwright
+  with the repo's own `playwright.config.*` (it reads `PORT` and
+  `CHROMIUM_PATH`), never a config copied to `/tmp`.
+- Quiet, colorless output instead of post-processing it: `NO_COLOR=1`,
+  `--reporter=dot` (vitest, playwright), `--silent`, `| tail -40`. Do not strip
+  ANSI codes with `sed`.
 - MCP servers are scoped per role: your session has only the ones your role
   needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
   omnigent's own tools. The host user's settings, plugins, hooks, skills and
@@ -128,7 +143,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
   `npm test`, `npx vitest run`, `node --test`), never one test file, one test
   or one curl request per tool call.
 - Start a dev server or a browser only for the few e2e checks the acceptance
-  criteria truly need, once, at the end; stop it when done.
+  criteria truly need, once, at the end; stop it when done. Let the repo's
+  Playwright config start the app (its `webServer` on `$PORT`) rather than a
+  server you start and `curl` by hand: a hand-run server and ad-hoc `curl`
+  probes are a last resort, when neither a route-handler unit test nor
+  Playwright can check it.
 - Batch independent reads and searches into one tool call (several files in
   one `cat`/`rg`, parallel tool calls). No polling loops, no `sleep` to wait:
   run the command in the foreground with a timeout.

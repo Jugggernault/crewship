@@ -1,4 +1,4 @@
-# QA shell allowlist: read, test, run the app, curl to localhost only, plus file
+# QA shell allowlist: read, test, run the app, curl to localhost only (local_http), plus file
 # operations and `git add` / `git commit` for the tests it writes. Every write
 # target is judged by shipcrew_test_writes_only (tests + .shipcrew/qa.json only)
 # and shipcrew_owned_paths. Anything else asks.
@@ -23,3 +23,4 @@ shipcrew_shell_allowlist:
         # @include allowlists/fs_write
         # @include allowlists/dev_tools
         # @include allowlists/run_app
+        # @include allowlists/local_http

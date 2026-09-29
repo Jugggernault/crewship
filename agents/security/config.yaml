@@ -168,6 +168,9 @@ guardrails:
             # sed only with print scripts (`sed -n 5,40p f`, `sed -n '/re/p' f`): a sed
             # script can write files (w) or run commands (e), so nothing else passes.
             - 're:^sed -n (-[Er] )?(\d+(,(\d+|\$))?p|\$p|/[^/]*/(,/[^/]*/)?p)( [^ ]+)*$'
+            # sed as a pipe filter (`... 2>&1 | sed 's/x/y/g'`): stdin only, no file
+            # operand, no -i/-f/-s, no r/R/w/W/e commands, no w/e flags.
+            - "@sed:sed_filter"
             - "jq"
             - "yq !-i* !--inplace*"
             - "tree !-o"
@@ -274,6 +277,9 @@ guardrails:
             # sed only with print scripts (`sed -n 5,40p f`, `sed -n '/re/p' f`): a sed
             # script can write files (w) or run commands (e), so nothing else passes.
             - 're:^sed -n (-[Er] )?(\d+(,(\d+|\$))?p|\$p|/[^/]*/(,/[^/]*/)?p)( [^ ]+)*$'
+            # sed as a pipe filter (`... 2>&1 | sed 's/x/y/g'`): stdin only, no file
+            # operand, no -i/-f/-s, no r/R/w/W/e commands, no w/e flags.
+            - "@sed:sed_filter"
             - "jq"
             - "yq !-i* !--inplace*"
             - "tree !-o"
@@ -451,8 +457,9 @@ guardrails:
             - "uv pip install -e"
             - ".venv/bin/pip install -r"
             - ".venv/bin/pip install -e"
-            # Running the app locally and probing it. curl only to localhost / 127.0.0.1 /
-            # [::1] and never writing a file (-o, -O, -T, -c, ... are refused).
+            # Running the app locally (verify roles). A vetted variable may be an argument
+            # (`npx next start -p ${PORT:-3000}`, `pkill -f "next start -p $PORT"`). The
+            # curl probes are the local_http group.
             - "./init.sh"
             - "bash init.sh"
             - "sh init.sh"
@@ -461,13 +468,18 @@ guardrails:
             - "next dev"
             - "npx next start"
             - "next start"
-            - "@curl:curl_localhost"
             - "ps"
             - "pgrep"
             - "ss"
             - "lsof"
             - "kill"
             - "pkill"
+            # curl to the app on this machine only: localhost / 127.0.0.1 / [::1] / 0.0.0.0,
+            # any port and method, headers, inline data (-d '{..}'), -w, -s, -i. Output
+            # files (-o) are write targets (owned paths / test writes; /dev/null and /tmp
+            # are free). Refused: any other host, -K/--config, -c/-D/--trace files, -O,
+            # proxies, unix sockets, -d @file / -T file outside the worktree or on .env*.
+            - "@curl:curl_localhost"
     # Task ownership (as owned_paths.yaml) for the security verify role: its report file
     # .shipcrew/security.md is writable too. With shipcrew_test_writes_only, the security writes test files
     # inside the task's owned paths and that report, nothing else.

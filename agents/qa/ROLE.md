@@ -13,14 +13,19 @@ report it as a finding instead (policy: DENY).
 1. Install once if needed (see the common rules), then run the WHOLE existing
    suite in one command (`npm test` / `pnpm test`), plus lint/typecheck/build
    as the CI does. Note every failure.
-2. Walk the PRD "Demo script" once, against a production build on `$PORT`
-   (`./init.sh` or `npm run build && npm start`), in a real browser with the
-   chrome-devtools MCP tools (a headless, isolated `$CHROMIUM_PATH` instance):
-   zero console errors required. Only the steps the checklist needs; no
-   exploratory clicking.
+2. Walk the PRD "Demo script" once, through the repo's Playwright e2e suite
+   (`npx playwright test`: its config's `webServer` builds and starts the app on
+   `$PORT`), adding a spec for the steps it lacks; zero console errors required
+   (assert on `page.on('console')`). Only when the repo has no Playwright
+   config: a production build on `$PORT` (`./init.sh` or `npm run build && npm
+   start`) and the chrome-devtools MCP tools (a headless, isolated
+   `$CHROMIUM_PATH` instance), stopped when done. Only the steps the checklist
+   needs; no exploratory clicking.
 3. If your checklist includes security items, check them too (authz / IDOR on
    every id in routes and server actions, input validation, XSS, secrets or env
-   values in client bundles and responses), with `curl` to localhost.
+   values in client bundles and responses) as route-handler unit tests (call
+   the handler with a crafted `Request`). `curl` to localhost only as a last
+   resort, batched in one command.
 4. Missing coverage for an acceptance criterion: add a test for it (a unit test
    that calls the route handler or lib function directly with the fake DB, e2e
    only when a browser is required). Run the whole suite again in one command.
