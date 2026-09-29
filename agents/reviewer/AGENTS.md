@@ -103,12 +103,22 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- Edit files with the Edit / Write tools. Never `sed -i` / `perl -pi` with a
+  complex regex (a one-line `sed -i 's/old/new/' <owned file>` is the most you
+  do in the shell): a wrong regex costs a turn to repair, the Edit tool does not.
 - Plain shell: never append `; echo EXIT=$?` (the tool already reports the
   exit code) and do not introduce shell variables (`S=/path; cat $S/x`): write
-  the paths out. A `$VAR` passes only in read-only commands (and as
-  `PORT=${PORT:-3000}` in front of a command). Run Playwright with the repo's
-  own `playwright.config.*` (it reads `PORT` and `CHROMIUM_PATH`), never a
-  config copied to `/tmp`.
+  the paths out. The vetted variables (`$PORT`, `$CHROMIUM_PATH`, `$CI`,
+  `$NODE_ENV`, `$HOME`, `$TMPDIR`, with an optional `${PORT:-3000}` default)
+  may be plain arguments of allowlisted commands (`npx next start -p
+  ${PORT:-3000}`, `curl localhost:$PORT/api/x`) and prefixes
+  (`PORT=${PORT:-3000} npx playwright test`); `${PIPESTATUS[0]}` is fine; any
+  other `$VAR`, or a variable in a git / file command, asks. Run Playwright
+  with the repo's own `playwright.config.*` (it reads `PORT` and
+  `CHROMIUM_PATH`), never a config copied to `/tmp`.
+- Quiet, colorless output instead of post-processing it: `NO_COLOR=1`,
+  `--reporter=dot` (vitest, playwright), `--silent`, `| tail -40`. Do not strip
+  ANSI codes with `sed`.
 - MCP servers are scoped per role: your session has only the ones your role
   needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
   omnigent's own tools. The host user's settings, plugins, hooks, skills and
@@ -124,7 +134,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
   `npm test`, `npx vitest run`, `node --test`), never one test file, one test
   or one curl request per tool call.
 - Start a dev server or a browser only for the few e2e checks the acceptance
-  criteria truly need, once, at the end; stop it when done.
+  criteria truly need, once, at the end; stop it when done. Let the repo's
+  Playwright config start the app (its `webServer` on `$PORT`) rather than a
+  server you start and `curl` by hand: a hand-run server and ad-hoc `curl`
+  probes are a last resort, when neither a route-handler unit test nor
+  Playwright can check it.
 - Batch independent reads and searches into one tool call (several files in
   one `cat`/`rg`, parallel tool calls). No polling loops, no `sleep` to wait:
   run the command in the foreground with a timeout.

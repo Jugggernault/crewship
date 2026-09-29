@@ -1,5 +1,6 @@
-# Running the app locally and probing it. curl only to localhost / 127.0.0.1 /
-# [::1] and never writing a file (-o, -O, -T, -c, ... are refused).
+# Running the app locally (verify roles). A vetted variable may be an argument
+# (`npx next start -p ${PORT:-3000}`, `pkill -f "next start -p $PORT"`). The
+# curl probes are the local_http group.
 - "./init.sh"
 - "bash init.sh"
 - "sh init.sh"
@@ -8,7 +9,6 @@
 - "next dev"
 - "npx next start"
 - "next start"
-- "@curl:curl_localhost"
 - "ps"
 - "pgrep"
 - "ss"

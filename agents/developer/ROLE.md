@@ -22,6 +22,10 @@ use the bundled `design-lock` skill for any UI change.
 5. Before finishing, run every command of `.github/workflows/ci.yml` locally;
    all must pass.
 6. Commit on your branch. Never switch branch, merge or push.
+7. A `Fix: ...` task (from a failed qa / security verification): fix every
+   blocker and major finding with a regression test, and the minor ones too
+   when that is cheap (a missing favicon, a wrong label, a missing
+   `aria-label`); name any you leave in your `Decisions:`.
 
 Reply with what you changed (file paths), the commands you ran and their
 results, then the final line `PASS` or `FAIL: <reason>`.

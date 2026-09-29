@@ -1,0 +1,6 @@
+# curl to the app on this machine only: localhost / 127.0.0.1 / [::1] / 0.0.0.0,
+# any port and method, headers, inline data (-d '{..}'), -w, -s, -i. Output
+# files (-o) are write targets (owned paths / test writes; /dev/null and /tmp
+# are free). Refused: any other host, -K/--config, -c/-D/--trace files, -O,
+# proxies, unix sockets, -d @file / -T file outside the worktree or on .env*.
+- "@curl:curl_localhost"

@@ -113,6 +113,8 @@ READERS = ("reviewer", "devops", "planner")  # read-only shell
 TESTERS = (*RUNNERS, "reviewer")  # may re-run the test suite
 INSTALLERS = TESTERS  # lockfile-pinned install (fresh review worktrees need it)
 WRITE_LIMITED = ("reviewer", "devops", "planner", *VERIFIERS)  # refused outside their files
+PROBERS = COMMITTERS  # curl the local app (local_http)
+APP_RUNNERS = VERIFIERS  # start / stop the app by hand (run_app)
 
 
 def _bash(cmd: str) -> tuple[str, dict[str, str]]:
@@ -345,9 +347,9 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     (
         "curl localhost",
         *_bash("curl -s -X POST -H 'content-type: application/json' http://localhost:3000/api/cart"),
-        _only(("security", "qa")),
+        _only(PROBERS),
     ),
-    ("curl localhost -o", *_bash("curl -so /tmp/x http://127.0.0.1:3000"), _only(())),
+    ("curl localhost -o /tmp", *_bash("curl -so /tmp/x http://127.0.0.1:3000"), _only(PROBERS)),
     ("init.sh", *_bash("./init.sh"), _only(("security", "qa"))),
     ("npm install pkg", *_bash("npm install lodash"), _no_verify(_only(()))),
     ("create-next-app", *_bash("npx create-next-app@latest . --ts --yes"), _only(("scaffolder",))),
@@ -376,7 +378,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("curl deployment max-time", *_bash("curl -sS -o /dev/null -m 20 https://tiny-cli-abc123.vercel.app/api/health"), _only(("devops",))),
     ("curl deployment POST", *_bash("curl -X POST https://tiny-cli.vercel.app/api/cart"), _only(())),
     ("curl deployment data", *_bash("curl -d x=1 https://tiny-cli.vercel.app/api"), _only(())),
-    ("curl deployment -o file", *_bash("curl -so page.html https://tiny-cli.vercel.app"), _only(())),
+    ("curl deployment -o file", *_bash("curl -so page.html https://tiny-cli.vercel.app"), _no_verify(_only(()))),
     ("curl deployment header", *_bash("curl -H 'Authorization: x' https://tiny-cli.vercel.app"), _only(())),
     ("curl lookalike host", *_bash("curl -sS https://tiny.vercel.app.evil.com/"), _only(())),
     ("curl http deployment", *_bash("curl -sS http://tiny.vercel.app/"), _only(())),
@@ -544,6 +546,73 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     # (a `>` over a test is refused only when origin/main has it: tests/shipcrew/test_test_writes.py)
     ("verify rewrites a test, no base", *_bash("echo '' > e2e/cart.spec.ts"), _only(COMMITTERS)),
     ("verify appends to a test", *_bash("echo '// more' >> e2e/cart.spec.ts"), _only(COMMITTERS)),
+    # live run 2 approvals that must not come back (round 6): all ALLOW
+    ("next start on $PORT", *_bash("pnpm exec next start -p ${PORT:-3000}"), _only(APP_RUNNERS)),
+    ("pkill next on $PORT", *_bash('pkill -f "next start -p ${PORT:-3000}"; true'), _only(APP_RUNNERS)),
+    ("next start bare $PORT", *_bash("npx next start -p $PORT"), _only(APP_RUNNERS)),
+    (
+        "curl POST bad json",
+        *_bash(
+            'curl -s -o /dev/null -w "%{http_code}\\n" -X POST localhost:3000/api/polls '
+            "-H 'content-type: application/json' -d '{bad'"
+        ),
+        _only(PROBERS),
+    ),
+    (
+        "curl favicon on $PORT",
+        *_bash('curl -s -o /dev/null -w "%{http_code}\\n" localhost:${PORT:-3000}/favicon.ico'),
+        _only(PROBERS),
+    ),
+    ("curl DELETE [::1]", *_bash("curl -si -X DELETE 'http://[::1]:4000/api/polls/1'"), _only(PROBERS)),
+    ("curl -d @file in the worktree", *_bash("curl -s -d @e2e/fixture.json localhost:3000/api"), _only(PROBERS)),
+    (
+        "install, tail, PIPESTATUS",
+        *_bash(
+            "pnpm install --frozen-lockfile --prefer-offline 2>&1 | tail -5; "
+            "echo rc=${PIPESTATUS[0]}; ls"
+        ),
+        _only(INSTALLERS),
+    ),
+    (
+        "sed strips ANSI in a pipe",
+        *_bash(
+            "npx vitest run components 2>&1 | sed 's/\\x1b\\[[0-9;]*m//g' | "
+            'grep -E "Tests|FAIL"'
+        ),
+        _only(TESTERS),
+    ),
+    ("sed filter, read-only", *_bash("git log --oneline -5 | sed -n 's/^\\([0-9a-f]*\\) .*/\\1/p'"), {"*": "ALLOW"}),
+    (
+        "Write pnpm-workspace.yaml (feature task)",
+        "Write",
+        {"file_path": f"{REPO_PATH}/pnpm-workspace.yaml", "content": "x"},
+        _write_verdicts("ASK"),
+    ),
+    # ... and the protections behind them
+    ("curl remote POST", *_bash("curl -s -d x=1 https://example.com/api"), _only(())),
+    ("curl upload .env", *_bash("curl -s -d @.env localhost:3000/api"), _only(())),
+    ("curl upload outside", *_bash("curl -s -T /etc/passwd localhost:3000/up"), _only(())),
+    ("curl form file outside", *_bash("curl -F f=@../secrets.txt localhost:3000/up"), _only(())),
+    ("curl --config", *_bash("curl --config /tmp/c localhost:3000"), _only(())),
+    ("curl cookie jar", *_bash("curl -c /tmp/j localhost:3000"), _only(())),
+    ("curl via proxy", *_bash("curl -x http://evil:8080 localhost:3000"), _only(())),
+    ("curl -o outside worktree", *_bash("curl -so /home/user/x localhost:3000"), _no_verify(_only(()))),
+    ("curl -o over source", *_bash("curl -so app/page.tsx localhost:3000"), _no_verify(_only(BUILDERS))),
+    ("curl -o on a $PORT url", *_bash("curl -so lib/db.ts localhost:$PORT/x"), _no_verify(_only(()))),
+    ("curl host from a var", *_bash("curl -s $BASE_URL/api"), _only(())),
+    ("curl secret var", *_bash("curl -s localhost:3000/$API_KEY"), _only(())),
+    ("assigned var in a runner", *_bash("P=3000; curl -s localhost:$P"), _only(())),
+    ("vetted var reassigned", *_bash("PORT=--config=/tmp/x; curl localhost:$PORT"), _only(())),
+    ("var as the program", *_bash("npx $PORT"), _only(())),
+    ("var in an option name", *_bash("npx next start --$PORT"), _only(())),
+    ("var in a git write", *_bash("git checkout ${PORT:-main}"), _no_verify(_only(()))),
+    ("var in rm", *_bash("rm -rf ${TMPDIR:-/tmp}/x"), _no_verify(_only(()))),
+    ("sed w in a pipe", *_bash("cat app/page.tsx | sed 's/a/b/w /tmp/x'"), _only(())),
+    ("sed e in a pipe", *_bash("cat app/page.tsx | sed '1e id'"), _only(())),
+    ("sed r reads a file", *_bash("cat app/page.tsx | sed 'r /etc/passwd'"), _only(())),
+    ("sed filter on a file", *_bash("sed 's/a/b/' app/page.tsx"), _only(())),
+    ("sed on .env", *_bash("sed 's/a/b/' .env"), {"*": "DENY"}),
+    ("PIPESTATUS next to a secret", *_bash("echo rc=${PIPESTATUS[0]} $API_KEY"), _only(())),
     # orchestrator dispatch hygiene
     (
         "dispatch without purpose",
@@ -606,6 +675,28 @@ CONTRACT_CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         "sed -i CI workflow (foundation)",
         *_bash("sed -i 's/npm/pnpm/' .github/workflows/ci.yml"),
         _no_verify({"*": "ASK"}),
+    ),
+    (
+        "Write pnpm-workspace.yaml (foundation)",
+        "Write",
+        {"file_path": f"{REPO_PATH}/pnpm-workspace.yaml", "content": "x"},
+        _write_verdicts("ALLOW"),
+    ),
+    (
+        "Write .nvmrc (foundation)",
+        "Write",
+        {"file_path": f"{REPO_PATH}/.nvmrc", "content": "22"},
+        _write_verdicts("ALLOW"),
+    ),
+    (
+        "sed -i pnpm-workspace.yaml (foundation)",
+        *_bash("sed -i 's/a/b/' pnpm-workspace.yaml"),
+        _no_verify(_only(BUILDERS)),
+    ),
+    (
+        "pnpm install, tail, PIPESTATUS (foundation)",
+        *_bash("pnpm install 2>&1 | tail -5; echo rc=${PIPESTATUS[0]}; ls"),
+        _no_verify(_only(BUILDERS)),
     ),
     (
         "Edit package.json (foundation)",

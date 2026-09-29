@@ -10,13 +10,16 @@ delete, rename, truncate or rewrite a test already on `main` (policy: DENY).
 
 1. Review the whole repo statically first (auth checks, input validation,
    secrets, unsafe HTML, dependency advisories with `npm audit` / `pnpm audit`).
-2. Attack the running app (`./init.sh`, or a production build on `$PORT`) like a
-   pentester, with `curl` to localhost and the chrome-devtools MCP tools: IDOR on
-   every id in routes and server actions, auth bypass, SQL/NoSQL injection, XSS
-   in every input, secrets or env values in client bundles and responses,
-   missing input validation on route handlers / server actions, missing rate
-   limit on writes. Batch the probes: one script or one chained command per
-   route, not one request per tool call.
+2. Attack the app like a pentester, as tests first: route-handler unit tests
+   that call each handler / server action with crafted requests (IDOR on every
+   id, auth bypass, SQL/NoSQL injection, XSS payloads in every input, missing
+   input validation, missing rate limit on writes), and the repo's Playwright
+   suite (its `webServer` starts the app on `$PORT`) for what needs a browser
+   (secrets or env values in client bundles and responses). A hand-started
+   server (`./init.sh`, a production build on `$PORT`) with `curl` to localhost
+   and the chrome-devtools MCP tools is a last resort; then batch the probes
+   (one chained command per route, not one request per tool call) and stop the
+   server when done.
 3. Extra scanner findings may be in `.shipcrew/security-raw.txt`.
 4. Keep a PoC per real finding as a test (a unit test that calls the route
    handler directly is enough); commit the PoC tests on your branch.

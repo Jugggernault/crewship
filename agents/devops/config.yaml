@@ -166,6 +166,9 @@ guardrails:
             # sed only with print scripts (`sed -n 5,40p f`, `sed -n '/re/p' f`): a sed
             # script can write files (w) or run commands (e), so nothing else passes.
             - 're:^sed -n (-[Er] )?(\d+(,(\d+|\$))?p|\$p|/[^/]*/(,/[^/]*/)?p)( [^ ]+)*$'
+            # sed as a pipe filter (`... 2>&1 | sed 's/x/y/g'`): stdin only, no file
+            # operand, no -i/-f/-s, no r/R/w/W/e commands, no w/e flags.
+            - "@sed:sed_filter"
             - "jq"
             - "yq !-i* !--inplace*"
             - "tree !-o"
@@ -272,6 +275,9 @@ guardrails:
             # sed only with print scripts (`sed -n 5,40p f`, `sed -n '/re/p' f`): a sed
             # script can write files (w) or run commands (e), so nothing else passes.
             - 're:^sed -n (-[Er] )?(\d+(,(\d+|\$))?p|\$p|/[^/]*/(,/[^/]*/)?p)( [^ ]+)*$'
+            # sed as a pipe filter (`... 2>&1 | sed 's/x/y/g'`): stdin only, no file
+            # operand, no -i/-f/-s, no r/R/w/W/e commands, no w/e flags.
+            - "@sed:sed_filter"
             - "jq"
             - "yq !-i* !--inplace*"
             - "tree !-o"

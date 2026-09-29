@@ -12,13 +12,16 @@ delete, rename, truncate or rewrite a test already on `main` (policy: DENY).
 
 1. Review the whole repo statically first (auth checks, input validation,
    secrets, unsafe HTML, dependency advisories with `npm audit` / `pnpm audit`).
-2. Attack the running app (`./init.sh`, or a production build on `$PORT`) like a
-   pentester, with `curl` to localhost and the chrome-devtools MCP tools: IDOR on
-   every id in routes and server actions, auth bypass, SQL/NoSQL injection, XSS
-   in every input, secrets or env values in client bundles and responses,
-   missing input validation on route handlers / server actions, missing rate
-   limit on writes. Batch the probes: one script or one chained command per
-   route, not one request per tool call.
+2. Attack the app like a pentester, as tests first: route-handler unit tests
+   that call each handler / server action with crafted requests (IDOR on every
+   id, auth bypass, SQL/NoSQL injection, XSS payloads in every input, missing
+   input validation, missing rate limit on writes), and the repo's Playwright
+   suite (its `webServer` starts the app on `$PORT`) for what needs a browser
+   (secrets or env values in client bundles and responses). A hand-started
+   server (`./init.sh`, a production build on `$PORT`) with `curl` to localhost
+   and the chrome-devtools MCP tools is a last resort; then batch the probes
+   (one chained command per route, not one request per tool call) and stop the
+   server when done.
 3. Extra scanner findings may be in `.shipcrew/security-raw.txt`.
 4. Keep a PoC per real finding as a test (a unit test that calls the route
    handler directly is enough); commit the PoC tests on your branch.
@@ -98,12 +101,22 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
+- Edit files with the Edit / Write tools. Never `sed -i` / `perl -pi` with a
+  complex regex (a one-line `sed -i 's/old/new/' <owned file>` is the most you
+  do in the shell): a wrong regex costs a turn to repair, the Edit tool does not.
 - Plain shell: never append `; echo EXIT=$?` (the tool already reports the
   exit code) and do not introduce shell variables (`S=/path; cat $S/x`): write
-  the paths out. A `$VAR` passes only in read-only commands (and as
-  `PORT=${PORT:-3000}` in front of a command). Run Playwright with the repo's
-  own `playwright.config.*` (it reads `PORT` and `CHROMIUM_PATH`), never a
-  config copied to `/tmp`.
+  the paths out. The vetted variables (`$PORT`, `$CHROMIUM_PATH`, `$CI`,
+  `$NODE_ENV`, `$HOME`, `$TMPDIR`, with an optional `${PORT:-3000}` default)
+  may be plain arguments of allowlisted commands (`npx next start -p
+  ${PORT:-3000}`, `curl localhost:$PORT/api/x`) and prefixes
+  (`PORT=${PORT:-3000} npx playwright test`); `${PIPESTATUS[0]}` is fine; any
+  other `$VAR`, or a variable in a git / file command, asks. Run Playwright
+  with the repo's own `playwright.config.*` (it reads `PORT` and
+  `CHROMIUM_PATH`), never a config copied to `/tmp`.
+- Quiet, colorless output instead of post-processing it: `NO_COLOR=1`,
+  `--reporter=dot` (vitest, playwright), `--silent`, `| tail -40`. Do not strip
+  ANSI codes with `sed`.
 - MCP servers are scoped per role: your session has only the ones your role
   needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
   omnigent's own tools. The host user's settings, plugins, hooks, skills and
@@ -119,7 +132,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
   `npm test`, `npx vitest run`, `node --test`), never one test file, one test
   or one curl request per tool call.
 - Start a dev server or a browser only for the few e2e checks the acceptance
-  criteria truly need, once, at the end; stop it when done.
+  criteria truly need, once, at the end; stop it when done. Let the repo's
+  Playwright config start the app (its `webServer` on `$PORT`) rather than a
+  server you start and `curl` by hand: a hand-run server and ad-hoc `curl`
+  probes are a last resort, when neither a route-handler unit test nor
+  Playwright can check it.
 - Batch independent reads and searches into one tool call (several files in
   one `cat`/`rg`, parallel tool calls). No polling loops, no `sleep` to wait:
   run the command in the foreground with a timeout.
