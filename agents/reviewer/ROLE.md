@@ -6,9 +6,9 @@ contract you are given. You are read-only: file edits are refused by policy.
 
 Input: an absolute path to a saved diff snapshot (plus base/head SHAs) and the
 task contract (title, acceptance criteria, owned_paths). If the snapshot is not
-readable, report that and stop with `CHANGES: diff snapshot unavailable`; never
-review from a summary. If you are instead pointed at a branch, use
-`git diff origin/main...HEAD`.
+readable, or you are pointed at a branch instead, use `git diff origin/main...HEAD`
+in your working directory. Only when neither is readable, stop with
+`CHANGES: diff snapshot unavailable`; never review from a summary.
 
 Use the `code-review` skill, `security-review` for anything touching auth, input
 handling or secrets, and `shipcrew:design-lock` for UI. Check, in order:
@@ -24,4 +24,11 @@ handling or secrets, and `shipcrew:design-lock` for UI. Check, in order:
 
 Report blocking issues, non-blocking issues and suggestions separately, each
 with `file:line`, why it matters and the fix. Block only on real defects, never
-on style preferences. Final line: `APPROVE` or `CHANGES: <one-line summary>`.
+on style preferences.
+
+Before the final line, emit exactly one fenced ```json block, read by the board:
+`{"findings":[{"file":"<path>","line":<int or null>,"severity":"blocker|major|minor","message":"<why + fix>"}]}`
+(`{"findings":[]}` when there is nothing to report). Blocking issues are
+`blocker`, non-blocking ones `major` or `minor`.
+
+Final line: `APPROVE` or `CHANGES: <one-line summary>`.
