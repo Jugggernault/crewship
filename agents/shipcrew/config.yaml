@@ -90,12 +90,12 @@ guardrails:
             && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
             && has(event.data.arguments.command)
             ? (
-                event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b[^;&|]*[\s:+](main|master|HEAD)(\s|$|[;&|])')
+                event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_.-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b[^;&|]*[\s:+](main|master|HEAD)(\s|$|[;&|])')
                 ? {"result": "DENY", "reason": "Never push main/master (or HEAD) from the orchestrator: push the shipcrew/<task> branch by name and open a draft PR."}
-                : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
+                : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_.-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
                   && !event.data.arguments.command.matches(r'\bpush\b[^;&|]*\sshipcrew/[A-Za-z0-9._/-]+(\s|$|[;&|])')
                 ? {"result": "DENY", "reason": "Push only task branches, named explicitly: git -C .worktrees/<key> push -u origin shipcrew/<key>-<slug>."}
-                : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+(pr\s+merge|repo\s+delete|release\s+create)\b')
+                : event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_.-])gh\s+(pr\s+merge|repo\s+delete|release\s+create)\b')
                 ? {"result": "ASK"}
                 : {"result": "ALLOW"}
               )
@@ -134,7 +134,8 @@ guardrails:
             : {"result": "ALLOW"}
     # CI definitions are the merge gate: changing them needs a human (approval card
     # in the Inbox). Read-only shell (cat, ls, grep, git diff ..., also chained with
-    # ; && || | and 2>/dev/null) passes.
+    # ; && || | and 2>/dev/null) passes; substitutions ($(..), `..`), newlines and
+    # in-place writers (yq -i, git diff --output) do not.
     shipcrew_workflows_approval:
       type: function
       on: [tool_call]
@@ -157,7 +158,11 @@ guardrails:
                 event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
                 && has(event.data.arguments.command)
                 && event.data.arguments.command.matches(r'\.github/workflows')
-                && !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
+                && (
+                  !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>`$\n\r]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
+                  || event.data.arguments.command.matches(r'\byq\b[^;&|]*\s(-i\S*|--inplace)(\s|=|$)')
+                  || event.data.arguments.command.matches(r'\bgit\s+(diff|log|show)\b[^;&|]*\s--output\b')
+                )
               )
             )
             ? {"result": "ASK"}

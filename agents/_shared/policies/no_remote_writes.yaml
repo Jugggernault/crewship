@@ -11,9 +11,9 @@ shipcrew_no_remote_writes:
         && event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
         && has(event.data.arguments.command)
         && (
-          event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
-          || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+(pr\s+(create|merge|close|reopen|ready)|release\s+create|repo\s+(create|delete|fork))\b')
-          || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_./-])gh\s+api\b.*(-X|--method)(\s+|=)?(POST|PUT|PATCH|DELETE)\b')
+          event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_.-])git(\s+(-C|-c|--git-dir|--work-tree|--namespace)\s+\S+|\s+-\S+)*\s+push\b')
+          || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_.-])gh\s+(pr\s+(create|merge|close|reopen|ready)|release\s+create|repo\s+(create|delete|fork))\b')
+          || event.data.arguments.command.matches(r'(^|[^A-Za-z0-9_.-])gh\s+api\b.*(-X|--method)(\s+|=)?(POST|PUT|PATCH|DELETE)\b')
         )
         ? {"result": "DENY"}
         : {"result": "ALLOW"}

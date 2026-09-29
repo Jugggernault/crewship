@@ -88,6 +88,12 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("push main", *_bash("git push origin main"), {"*": "DENY"}),
     ("push HEAD:main", *_bash("git push origin shipcrew/T02:main"), {"*": "DENY"}),
     ("chained push", *_bash("git add -A && git commit -m wip && git push"), {"*": "DENY"}),
+    ("git push by path", *_bash("/usr/bin/git push origin main"), {"*": "DENY"}),
+    (
+        "gh pr create by path",
+        *_bash("/usr/bin/gh pr create --fill"),
+        {"*": "DENY", "orchestrator": "ALLOW"},
+    ),
     ("gh pr create", *_bash("gh pr create --fill"), {"*": "DENY", "orchestrator": "ALLOW"}),
     (
         "gh pr create draft",
@@ -165,6 +171,29 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
         *_bash("ls .github/workflows && sed -i 's/a/b/' .github/workflows/ci.yml"),
         {"*": "ASK"},
     ),
+    (
+        "write hidden in a substitution",
+        *_bash("cat $(sed -i 's/a/b/' .github/workflows/ci.yml)"),
+        {"*": "ASK"},
+    ),
+    (
+        "write hidden in backticks",
+        *_bash("ls `sed -i 's/a/b/' .github/workflows/ci.yml`"),
+        {"*": "ASK"},
+    ),
+    (
+        "write on a second line",
+        *_bash("cat .github/workflows/ci.yml\nsed -i 's/a/b/' .github/workflows/ci.yml"),
+        {"*": "ASK"},
+    ),
+    ("yq in-place edit", *_bash("yq -i '.on = \"push\"' .github/workflows/ci.yml"), {"*": "ASK"}),
+    ("yq read of workflow", *_bash("yq '.jobs' .github/workflows/ci.yml"), {"*": "ALLOW"}),
+    (
+        "git diff --output into workflows",
+        *_bash("git diff --output=.github/workflows/ci.yml"),
+        {"*": "ASK"},
+    ),
+    ("grep -i workflows", *_bash("grep -i node .github/workflows/ci.yml"), {"*": "ALLOW"}),
     # no browser downloads
     ("playwright install", *_bash("npx playwright install chromium"), {"*": "DENY"}),
     ("playwright install deps", *_bash("pnpm exec playwright install --with-deps"), {"*": "DENY"}),

@@ -1,6 +1,7 @@
 # CI definitions are the merge gate: changing them needs a human (approval card
 # in the Inbox). Read-only shell (cat, ls, grep, git diff ..., also chained with
-# ; && || | and 2>/dev/null) passes.
+# ; && || | and 2>/dev/null) passes; substitutions ($(..), `..`), newlines and
+# in-place writers (yq -i, git diff --output) do not.
 shipcrew_workflows_approval:
   type: function
   on: [tool_call]
@@ -23,7 +24,11 @@ shipcrew_workflows_approval:
             event.data.name in ["sys_os_shell", "Bash", "bash", "Shell", "terminal", "developer__shell", "shell"]
             && has(event.data.arguments.command)
             && event.data.arguments.command.matches(r'\.github/workflows')
-            && !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
+            && (
+              !event.data.arguments.command.matches(r'^(\s*(cat|ls|head|tail|grep|rg|wc|yq|diff|git\s+(diff|log|show|status))\b([^;&|>`$\n\r]|2>/dev/null|2>&1)*(;|&&|\|\||\||$))+\s*$')
+              || event.data.arguments.command.matches(r'\byq\b[^;&|]*\s(-i\S*|--inplace)(\s|=|$)')
+              || event.data.arguments.command.matches(r'\bgit\s+(diff|log|show)\b[^;&|]*\s--output\b')
+            )
           )
         )
         ? {"result": "ASK"}
