@@ -16,19 +16,20 @@ provider configured with `omnigent setup`.
 
 | role | harness | skills it uses | guardrails (on top of the common set) | verdict line |
 |---|---|---|---|---|
-| `shipcrew` (orchestrator) | `claude-sdk`, `spawn: true`, `tools.agents` = the 9 roles | bundled: `plan`, `dispatch`, `verify` | pushes only `shipcrew/*` branches named explicitly, never `main`/`master`/`HEAD`; `gh pr merge` / `repo delete` / `release create` ASK; max 6 dispatches per turn; every dispatch declares a purpose (`plan`, `implement`, `review`, `verify`, `explore`, `search`) | `PASS` / `FAIL: <reason>` |
-| `planner` (PM + architect) | `claude-sdk` | none | writes only `.shipcrew/plan.json` | `PASS` / `FAIL` |
-| `designer` | `claude-native` | `shipcrew:design-lock`, `impeccable` | common set | `PASS` / `FAIL` |
-| `scaffolder` | `claude-native` | `vercel:nextjs`, `vercel:shadcn`, `vercel:vercel-storage`, `shipcrew:design-lock` | common set | `PASS` / `FAIL` |
-| `developer` | `claude-native` | `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `shipcrew:design-lock`, `vercel:nextjs`, `vercel:shadcn` | common set | `PASS` / `FAIL` |
-| `reviewer` | `claude-native`, a fresh session each round | `code-review`, `security-review`, `shipcrew:design-lock` | read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
-| `integrator` | `claude-native` | bundled: `resolve-conflicts` | common set | `PASS` / `FAIL` |
-| `qa` | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | writes only `.shipcrew/qa.json` | `PASS` / `FAIL: <n> failures` |
-| `security` | `claude-native` | `security-review`, chrome-devtools MCP | common set | `PASS` / `FAIL` |
-| `devops` | `claude-native` | `vercel:deploy`, `vercel:deployments-cicd` | writes only `.shipcrew/deploy.json` | `PASS` / `FAIL` |
+| `shipcrew` (orchestrator) | `claude-sdk`, `spawn: true`, `tools.agents` = the 9 roles | bundled: `plan`, `dispatch`, `verify` | pushes only `shipcrew/<id8>-<slug>` task branches, each named explicitly (every push of a chained command is checked), never `main`/`master`/`HEAD`, `--all`/`--mirror`/`--tags`/`--delete`/`+refspec`; `gh pr merge` / `repo delete` / `release create` ASK; max 6 dispatches per turn; every dispatch declares a purpose (`plan`, `implement`, `review`, `verify`, `explore`, `search`) | `PASS` / `FAIL: <reason>` |
+| `planner` (PM + architect) | `claude-sdk` | none | read-only shell allowlist; writes only `.shipcrew/plan.json` | `PASS` / `FAIL` |
+| `designer` | `claude-native` | `shipcrew:design-lock`, `impeccable` | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `scaffolder` | `claude-native` | `vercel:nextjs`, `vercel:shadcn`, `vercel:vercel-storage`, `shipcrew:design-lock` | scaffolder allowlist (builder + generators, dependency changes), owned paths | `PASS` / `FAIL` |
+| `developer` | `claude-native` | `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `shipcrew:design-lock`, `vercel:nextjs`, `vercel:shadcn` | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `reviewer` | `claude-native`, a fresh session each round | `code-review`, `security-review`, `shipcrew:design-lock` | read-only shell allowlist; read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
+| `integrator` | `claude-native` | bundled: `resolve-conflicts` | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `qa` | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | qa allowlist (read, test, run the app, curl localhost; no shell writes); writes only `.shipcrew/qa.json` | `PASS` / `FAIL: <n> failures` |
+| `security` | `claude-native` | `security-review`, chrome-devtools MCP | security allowlist (builder + run the app, curl localhost), owned paths | `PASS` / `FAIL` |
+| `devops` | `claude-native` | `vercel:deploy`, `vercel:deployments-cicd` | devops allowlist (read-only + Vercel reads); writes only `.shipcrew/deploy.json` | `PASS` / `FAIL` |
 
-Every bundle sets `permission_mode: auto` (headless: nobody answers permission
-prompts). `superpowers:verification-before-completion` is required by the
+Permissions are set up so that nothing ever uses `bypassPermissions` (see
+[Permissions](#permissions-allowlists-and-owned-paths)).
+`superpowers:verification-before-completion` is required by the
 common rules for every role. Skills are referenced by their installed names.
 Only role-specific skills are vendored into a bundle (`resolve-conflicts`, and
 the orchestrator's `plan` / `dispatch` / `verify`).
@@ -49,11 +50,124 @@ native Claude tool calls through the PreToolUse hook), not only in the prompt:
 |---|---|
 | `blast_radius` (`gate_pushes: false`) | polly's catastrophic DENY set: force-push, `rm -rf /` or a system dir, hard reset to a remote ref |
 | `shipcrew_no_remote_writes` (workers) | DENY `git push`, `gh pr create/merge/close/reopen/ready`, `gh release create`, `gh repo create/delete/fork`, `gh api -X POST/PUT/PATCH/DELETE`. The orchestrator pushes. |
-| `shipcrew_no_env_read` | DENY reading `.env`, `.env.local`, `.env.*` through Read/Grep/`sys_os_read` or the shell (`.env.example`, `.sample`, `.template` allowed; `vercel env pull` allowed) |
+| `shipcrew_no_env_read` | DENY reading `.env`, `.env.local`, `.env.*` through Read/Grep/`sys_os_read` or the shell (`.env.example`, `.sample`, `.template` allowed; `vercel env pull` is not denied here, the shell allowlists ask for it) |
 | `shipcrew_workflows_approval` | ASK before any write to `.github/workflows/**` (an approval card in the Inbox; waits up to 24 h). Read-only shell passes. |
 | `shipcrew_no_browser_download` | DENY `playwright install` (and `install-deps`, puppeteer browser downloads). Use `$CHROMIUM_PATH`. |
 
 A denied call is final. The rules explain why, so the agent doesn't retry.
+
+## Permissions: allowlists and owned paths
+
+The policies live in the omnigent fork (`omnigent/shipcrew/policies.py`,
+registered in omnigent's policy registry so uploaded bundles may use them) and
+are configured from `_shared/policies/`:
+
+| policy | fragment | effect |
+|---|---|---|
+| `shipcrew_shell_allowlist` | `shell_allowlist_<profile>.yaml` | A shell command runs with **no prompt** when every simple command in it (split on `;` `&&` `\|\|` `\|` `&` and newlines, quote-aware) matches the role's allowlist. Anything else is **ASK**. So is a command with `$(..)`, backticks, `<(..)` or a heredoc, except Claude Code's `git commit -m "$(cat <<'EOF' ... EOF)"` idiom. An env prefix is allowed only for known names (`CI`, `CHROMIUM_PATH`, `PORT`, `NODE_ENV` ...). `timeout`/`time`/`nohup`, `/usr/bin/` and `node_modules/.bin/` prefixes, `pnpm exec` and `git --no-pager` are unwrapped first. |
+| `shipcrew_owned_paths` | `owned_paths.yaml` | A write outside the task's `owned_paths` is **ASK**. That covers Write/Edit/MultiEdit/NotebookEdit/`sys_os_write`, shell redirections, `cp`/`mv`/`rm`/`touch`/`mkdir`/`tee`/`chmod`, `git mv`/`rm`/`restore`/`checkout --`, `prettier --write`, `eslint --fix`, `ruff format`, and dependency changes (`npm install <pkg>` and similar). A write to `package.json`, a lockfile or `pyproject.toml`, at any depth, is **ASK** unless the task lists that file by name. `cd` and `git -C` are tracked. Always free: build output and caches (`node_modules`, `.next`, `dist`, `coverage`, `test-results` ...) and, outside the worktree, `/tmp` and `/dev/null`. Reads are never gated. |
+| `shipcrew_orchestrator_push_guard` | `orchestrator_push_guard.yaml` | Every `git push` must name refspecs, and each one must be `shipcrew/<first 8 chars of the task id>-<slug>` (the one branch scheme the server's worktrees use too). Anything else is **DENY**. `gh pr merge` / `repo delete` / `release create` are **ASK**. |
+
+Allowlists are built from shared command groups in
+`_shared/policies/allowlists/`. A fragment line `# @include allowlists/<group>`
+is expanded by `build_agents.py`:
+
+| profile (roles) | groups |
+|---|---|
+| builder (developer, designer, integrator) | `read_only`, `git_read`, `git_write`, `fs_write`, `dev_tools` |
+| scaffolder | builder + `scaffold` (create-next-app, shadcn, drizzle-kit, `npm install <pkg>`) |
+| security | builder + `run_app` |
+| qa | `read_only`, `git_read`, `dev_tools`, `run_app`; `shell_writes: false` |
+| read-only (reviewer, planner) | `read_only`, `git_read`; `shell_writes: false` |
+| devops | `read_only`, `git_read`, `vercel_read`; `shell_writes: false` |
+
+The groups:
+
+- `read_only`: `ls cat head tail wc rg grep find`, with `-exec`/`-delete`
+  refused. `sed -n` with print scripts only. Also `jq yq`, `sort` without `-o`,
+  `diff stat du pwd cd echo printf which` and similar, `python3 -m json.tool`,
+  `<tool> --version`, and the `gh pr/run/issue/repo view|list` reads.
+- `git_read`: `status diff log show rev-parse ls-files blame grep merge-base`,
+  the listing forms of `branch`/`tag`/`remote`/`stash`/`reflog`, and
+  `config --get`. `--output` is refused.
+- `git_write`: `add commit branch switch checkout merge rebase cherry-pick
+  revert restore reset mv rm`, `stash push -m` and `fetch`. Refused: branch
+  delete/move, `rebase -i`/`--exec`, and `reset --hard/--merge/--keep`. There
+  is no push and no remote write (`shipcrew_no_remote_writes` DENYs them).
+- `fs_write`: `mkdir touch cp mv rm rmdir chmod tee`, each target judged by
+  owned paths.
+- `dev_tools`: installs from the lockfile only (`npm ci`, `pnpm install
+  --frozen-lockfile`, `uv sync`, `uv pip install -r/-e`), plus `npm test`,
+  `npm run <script>`, the pnpm/yarn equivalents, `node --test`, `vitest`,
+  `jest`, `playwright test`, `tsc`, `eslint`, `prettier`, `next build/lint`,
+  `biome`, `stylelint`, `@google/design.md lint`, `pytest` (plain, `uv run`,
+  `.venv/bin`), `ruff mypy pyright` and `black --check`.
+- `run_app`: `./init.sh`, `npm start`, `next dev/start`, `ps ss lsof kill
+  pkill`, and `curl` to `localhost`/`127.0.0.1`/`[::1]` only. curl may not
+  write a file: `-o`, `-O`, `-T`, `-K`, `-c`, `-D` and `--proxy` are refused.
+- `vercel_read`: `vercel ls/inspect/whoami/logs/project ls/env ls/domains
+  ls/alias ls`. `vercel link`/`git connect`/`deploy`/`env pull` ASK.
+
+**How it reaches the session.** When the board starts a task, the server
+(`omnigent/shipcrew/sessions.py`) packs the role bundle and writes the task's
+`owned_paths` and absolute worktree path over the two `# @task.*` slots of
+`shipcrew_owned_paths` (`inject_task_contract`). The contract is stored with
+the session's bundle on the server, so the agent cannot edit it. If the
+bundle is started without a task contract (not from a board card), the owned
+paths policy abstains.
+
+**ASK, ALLOW and Claude's own prompt (claude-native).** The guardrails run in
+omnigent's `PreToolUse` hook. The outcomes are:
+
+- **ASK**: the server holds the hook, publishes an approval card (Inbox), and
+  the board card goes to **Intervention**.
+- **Approve** (`accept`): the tool runs.
+- **Deny** (`decline`): omnigent refuses the call **and interrupts the
+  agent's turn**. The card then drops to Review, idle.
+- **`cancel`**: refuses the call only, and the agent continues with the
+  reason.
+- **DENY** from a policy is final.
+- **ALLOW** (or no match) hands the call back to Claude's own permission
+  system.
+
+So that Claude never adds a second prompt for tools the guardrails govern,
+claude-native bundles use `permission_mode: default` plus `allowed_tools:`
+(Bash, Edit, Write, MultiEdit, NotebookEdit, Read, Glob, Grep, ... and the role's
+MCP servers). The omnigent fork turns `allowed_tools` into Claude's
+`--allowedTools` launch flag. Any other tool still gets Claude's prompt,
+which omnigent also routes to the Inbox. If the policy server is unreachable,
+the hook fails to "ask". claude-sdk bundles (planner, orchestrator) keep
+omnigent's `auto`: the SDK pre-approves its tools and the same guardrails
+gate them in-process. Nothing uses `bypassPermissions`.
+
+### Live check (2026-09-29)
+
+The test ran on a real stack: `scripts/shipcrew_stack.sh` on port 16771, with
+its own state dir and the bundles of this branch. The Claude Code 2.1.284
+subscription login ran one developer-bundle task on a throwaway npm repo
+(`"test": "node --test"`, owned paths `src/**`, `test/**`):
+
+- **Launch.** The session started with `terminal_launch_args` =
+  `--permission-mode default --allowedTools Bash,Edit,Write,...`.
+- **`npm test`.** It ran immediately, with no approval card and no Claude
+  prompt, and passed (1 test).
+- **`node -e "console.log(40 + 2)"`** (not allowlisted).
+  - One approval card appeared: `shipcrew_shell_allowlist: node -e
+    console.log(40 + 2) is not on the builder shell allowlist`.
+  - The board card went Running → **Intervention**.
+  - After Approve, the command ran once and printed `42`, with no second
+    Claude prompt. The card went back to Running.
+- **Write `notes/smoke.txt`** (outside the owned paths).
+  - One approval card appeared: `shipcrew_owned_paths: notes/smoke.txt is
+    outside this task's owned paths (src/**, test/**)`.
+  - The card went to **Intervention**.
+  - After Deny, Claude got `PreToolUse:Write hook error: ...` and omnigent
+    interrupted the turn. The card went to Review. The file was not created
+    and the worktree stayed clean.
+- **Bug found and fixed.** The first run exposed one bug: the throwaway
+  worktree lived under `/tmp`, and the `/tmp/**` free-path rule matched
+  before the worktree check, so the write went through. The worktree check
+  now runs first, and there is a regression test.
 
 ## Layout
 
@@ -61,6 +175,7 @@ A denied call is final. The rules explain why, so the agent doesn't retry.
 agents/
   _shared/COMMON.md          common rules (stack, fake DB, CHROMIUM_PATH, limits, done)
   _shared/policies/*.yaml    guardrail fragments, one policy each
+  _shared/policies/allowlists/*.yaml  shell command groups (# @include'd by the allowlist fragments)
   <role>/ROLE.md             role prompt (hand-written)
   <role>/AGENTS.md           GENERATED = ROLE.md + COMMON.md  (config: instructions: AGENTS.md)
   <role>/config.yaml         bundle spec; its guardrails block is GENERATED between markers
@@ -97,12 +212,27 @@ For each bundle, the validator does the following:
 - repeats the server upload path: `materialize_bundle`, then tar.gz, then
   `load(bytes, enforce_handler_allowlist=True)`, with safe extraction and only
   registered policy handlers allowed;
-- checks shipcrew conventions: harness per role, `permission_mode: auto`, no
-  pinned model, instructions actually read from `AGENTS.md`, bundled skills,
-  and that the orchestrator's `tools.agents` equals the roles;
-- builds every guardrail through omnigent's factory path and runs 46 tool-call
-  cases per bundle (plus the dispatch cap), expecting a specific ALLOW, ASK or
-  DENY for each.
+- checks shipcrew conventions:
+  - the harness per role;
+  - claude-native bundles use `permission_mode: default` plus `allowed_tools`,
+    which omnigent's launch-arg derivation turns into `--allowedTools`;
+    claude-sdk bundles use `auto`; nothing uses bypassPermissions;
+  - no pinned model;
+  - instructions are actually read from `AGENTS.md`;
+  - bundled skills;
+  - the orchestrator's `tools.agents` equals the roles;
+- builds every guardrail through omnigent's factory path and runs 110
+  tool-call cases per bundle (plus the dispatch cap), expecting a specific
+  ALLOW, ASK or DENY for each. The cases cover:
+  - allowlisted commands (ALLOW, no prompt);
+  - other commands (ASK);
+  - writes in and out of the owned paths, and to `package.json`;
+  - the old DENY set (push, PRs, `.env`, `playwright install`, `rm -rf /`);
+  - the branch scheme.
+
+  Worker bundles get the task contract injected with the server's own
+  `inject_task_contract`. Without a contract, the owned paths policy must
+  abstain.
 
 ## Contract with the shipcrew server module
 
@@ -119,4 +249,5 @@ For each bundle, the validator does the following:
 - **Board mode.** Send the orchestrator `mode: plan-only` when the board's
   scheduler runs the tasks. It then stops once `plan.json` is valid.
 - **Publishing.** Workers never push. The module, or the orchestrator in full
-  mode, pushes `shipcrew/<key>-<slug>` branches and opens draft PRs.
+  mode, pushes `shipcrew/<id8>-<slug>` branches (first 8 chars of the task
+  id, slug of the title) and opens draft PRs.
