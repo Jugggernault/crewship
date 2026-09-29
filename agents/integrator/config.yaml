@@ -440,6 +440,9 @@ guardrails:
             # Package managers (install from the lockfile only), test runners, linters,
             # typecheckers and builds. Adding or removing a dependency is not here: it
             # changes package.json + the lockfile (shared contract files) and asks.
+            # Output-only package-manager flags (-s/--silent, --loglevel <x>, --reporter=<x>,
+            # --color/--no-color, -w outside dependency commands) are dropped before
+            # matching: `pnpm -s lint` matches "pnpm lint", `npm run --silent test` "npm run *".
             - "npm test"
             - "npm t"
             - "npm run $"
@@ -519,21 +522,6 @@ guardrails:
             - "uv pip install -e"
             - ".venv/bin/pip install -r"
             - ".venv/bin/pip install -e"
-            - "pnpm -s lint"
-            - "pnpm --silent lint"
-            - "pnpm -s run lint"
-            - "pnpm -s typecheck"
-            - "pnpm --silent typecheck"
-            - "pnpm -s run typecheck"
-            - "pnpm -s test"
-            - "pnpm --silent test"
-            - "pnpm -s run test"
-            - "pnpm -s build"
-            - "pnpm --silent build"
-            - "pnpm -s run build"
-            - "pnpm -s e2e"
-            - "pnpm --silent e2e"
-            - "pnpm -s run e2e"
             # Dependency changes (builders + scaffolder). Each one rewrites package.json and
             # the lockfile, so shipcrew_owned_paths lets it through only when the task owns
             # package.json by name (owning it owns the lockfiles next to it); otherwise it
@@ -545,10 +533,12 @@ guardrails:
             - "pnpm install !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
             - "pnpm i !-g !--global !-C !--dir* !-w !--workspace* !-r !--recursive !-F !--filter* !--prefix*"
             - "yarn add !--cwd* !-W !--ignore-workspace-root-check"
-            # In-place text edits (builders + scaffolder): `sed -i` with substitution
-            # scripts only (no w/e/r commands or flags) and `perl -pi -e 's/a/b/g'` with one
-            # code-free substitution (no /e, no @{..}, no $var interpolation). The edited
-            # files are write targets for shipcrew_owned_paths (and the workflows guard).
+            # In-place text edits (builders + scaffolder): `sed -i` with ONE simple
+            # substitution (no address regex, no second command, no w/e/r, no `\n` in the
+            # replacement) and `perl -pi -e 's/a/b/g'` with one code-free substitution (no
+            # /e, no @{..}, no $var interpolation). Any other `sed -i` / `perl -pi` is DENY
+            # with a hint to use the Edit tool. The edited files are write targets for
+            # shipcrew_owned_paths (and the workflows guard).
             - "@sed:sed_in_place"
             - "@perl:perl_in_place"
             # curl to the app on this machine only: localhost / 127.0.0.1 / [::1] / 0.0.0.0,
@@ -561,8 +551,10 @@ guardrails:
     # git mv/rm/restore, prettier --write, eslint --fix, a dependency change)
     # outside the task's owned_paths asks, and so does a write to package.json or a
     # lockfile unless the task owns it by name. Build output, caches and /tmp are
-    # free; reads are never gated. The shipcrew server fills the two @task slots
-    # when it starts a board task; left empty the policy abstains.
+    # free; reads are never gated. A file another in-progress task of the mission
+    # owns is refused (DENY) with a hint to work against the shared contract. The
+    # shipcrew server fills the @task slots when it starts a board task (the other
+    # tasks as a start-time snapshot); left empty the policy abstains.
     shipcrew_owned_paths:
       type: function
       on: [tool_call]
@@ -571,5 +563,6 @@ guardrails:
         arguments:
           owned_paths: []  # @task.owned_paths
           root: ""  # @task.root
+          other_tasks: []  # @task.other_tasks
           reason: Stay inside owned_paths; a human approves shared-file edits on the card.
 # <<< shipcrew-guardrails

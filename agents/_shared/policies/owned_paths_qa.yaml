@@ -9,5 +9,6 @@ shipcrew_owned_paths:
     arguments:
       owned_paths: []  # @task.owned_paths
       root: ""  # @task.root
+      other_tasks: []  # @task.other_tasks
       extra_free_paths: [".shipcrew/qa.json"]
       reason: Stay inside owned_paths; a human approves shared-file edits on the card.

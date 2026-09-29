@@ -71,6 +71,14 @@ watches the board and the sub-agent tree but will usually not answer questions.
   approval card, and so does any change to `package.json` or a lockfile
   (including `pnpm add <pkg>`) unless your task owns `package.json` by name
   (owning it owns the lockfile next to it).
+- A file another in-progress task owns is refused outright (DENY, with the
+  owner's name): do not edit it and do not look for another way to write it.
+  Work against the shared contract (`lib/api-client.ts`, `lib/db.ts`, the
+  shared types) and mock it in your tests; if the contract lacks something,
+  say so in your final reply (`Decisions:`).
+- Existing tests that only import modules your task owns are yours at start
+  (the board adds them to your `owned_paths`): update them when you replace
+  the code they cover.
 - Dependencies: the Foundation task installs every package the crew needs,
   the test toolchain included. Any other task that finds it needs a new
   package says so in its `Decisions:` list instead of racing on the lockfile.
@@ -107,9 +115,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on the allowlist: `npm run <script>` / `npx vitest` / `npx playwright test`
   rather than ad-hoc `node -e`, `python -c`, `bash -c` or `$(...)`. Use the
   Write/Edit tools to create files, not heredocs.
-- Edit files with the Edit / Write tools. Never `sed -i` / `perl -pi` with a
-  complex regex (a one-line `sed -i 's/old/new/' <owned file>` is the most you
-  do in the shell): a wrong regex costs a turn to repair, the Edit tool does not.
+- Edit files with the Edit / Write tools (they only need the file to be in
+  your `owned_paths`). `sed -i` / `perl -pi` are for ONE simple `s/old/new/`
+  substitution on an owned file, nothing more: address ranges (`/re/d`,
+  `/re/,+1d`), several commands, inserted lines (`\n` in the replacement,
+  `a`/`i`/`c`) are refused by policy (DENY): use the Edit tool.
 - Plain shell: never append `; echo EXIT=$?` (the tool already reports the
   exit code) and do not introduce shell variables (`S=/path; cat $S/x`): write
   the paths out. The vetted variables (`$PORT`, `$CHROMIUM_PATH`, `$CI`,
@@ -122,7 +132,8 @@ watches the board and the sub-agent tree but will usually not answer questions.
   `CHROMIUM_PATH`), never a config copied to `/tmp`.
 - Quiet, colorless output instead of post-processing it: `NO_COLOR=1`,
   `--reporter=dot` (vitest, playwright), `--silent`, `| tail -40`. Do not strip
-  ANSI codes with `sed`.
+  ANSI codes with `sed`. Package-manager output flags (`pnpm -s lint`, `npm run
+  --silent test`, `--loglevel warn`) are fine: they match the plain command.
 - MCP servers are scoped per role: your session has only the ones your role
   needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
   omnigent's own tools. The host user's settings, plugins, hooks, skills and
@@ -170,6 +181,14 @@ watches the board and the sub-agent tree but will usually not answer questions.
   on top, and a repository API `db.<entity>.list/get/create/update/delete`
   shaped like the plan's `data_model`.
 - UI code never imports mock data directly.
+- Input size limits: every user-supplied text field an API route or server
+  action accepts has an explicit maximum length (a named constant next to the
+  validation, e.g. `MAX_QUESTION_LENGTH = 200`), and the route answers 400 with
+  a clear message above it. Each limit has a unit test that calls the handler
+  with a value one character over the limit and expects 400.
+- App icon: every Next.js app ships `app/icon.svg` (a simple mark in the
+  `DESIGN.md` colors), so the browser never logs a `/favicon.ico` 404 console
+  error.
 - With a real database (`needs_db: true`): Neon Postgres + Drizzle (schema,
   migration, seed); credentials come from the environment, never from files you read.
 

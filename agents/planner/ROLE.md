@@ -31,7 +31,11 @@ tasks. You write no product code. You combine two hats:
    need, the whole test toolchain included (vitest, @testing-library/react,
    @testing-library/user-event, jsdom, @playwright/test, @faker-js/faker):
    parallel feature tasks never change `package.json` or the lockfile. Name
-   those packages in the Foundation body. If there is no
+   those packages in the Foundation body. Foundation tests are smoke tests of
+   the shell and the contract types only: its body must say it writes NO test
+   that asserts the behaviour of a route, page or API another task owns (a
+   stub replaced later would pin the stub; the owning task writes those
+   tests). If there is no
    `DESIGN.md` yet, add `T00` (role `designer`) before it.
 4. Every other task depends on `T01` plus only the tasks it truly needs merged
    first. After the foundation, maximise parallel width: aim for 3 to 6 tasks
@@ -58,10 +62,12 @@ tasks. You write no product code. You combine two hats:
    - Small PRD (5 features or fewer): ONE final verify task, role `qa`, depends
      on every build task. Its acceptance checklist covers the demo script AND
      the security items (authz / IDOR on every id, input validation on every
-     route handler and server action, no secrets or env values in client
+     route handler and server action, a max length with a 400 above it on
+     EVERY user-supplied text field, no secrets or env values in client
      bundles or responses, XSS in every input). No separate `security` task.
    - Larger PRD: one `qa` task and one `security` task, each depending on
-     every build task.
+     every build task; the `security` checklist includes the max-length check
+     on EVERY user-supplied text field.
    - Verify tasks own test paths only, e.g. `["e2e/**", "tests/**"]`.
    - Do not plan a deploy task: once every task is merged the server ships
      the mission itself (a `devops` session deploys `main` to Vercel, the

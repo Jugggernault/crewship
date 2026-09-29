@@ -1,16 +1,20 @@
 # Test runners only (the reviewer re-runs the suite on the diff it reviews).
 # Plus the read-only checks (typecheck, lint) and a lockfile-pinned install so a
-# fresh review worktree can run them. No new deps, builds or formatters.
+# fresh review worktree can run them. No new deps, builds, e2e or formatters (CI
+# already ran them green; the reviewer never re-runs them). `pnpm -s test`,
+# `npm run --silent lint` match these plain entries (output flags are dropped).
 - "npm test"
 - "npm t"
 - "pnpm test"
 - "yarn test"
+- "npm run test"
 - "npm run typecheck"
 - "npm run lint"
 - "pnpm typecheck"
 - "pnpm run typecheck"
 - "pnpm lint"
 - "pnpm run lint"
+- "pnpm run test"
 - "npx tsc --noEmit"
 - "npm ci"
 - "pnpm install --frozen-lockfile"
@@ -25,18 +29,3 @@
 - "python3 -m pytest"
 - ".venv/bin/pytest"
 - "uv run pytest"
-- "pnpm -s lint"
-- "pnpm --silent lint"
-- "pnpm -s run lint"
-- "pnpm -s typecheck"
-- "pnpm --silent typecheck"
-- "pnpm -s run typecheck"
-- "pnpm -s test"
-- "pnpm --silent test"
-- "pnpm -s run test"
-- "npm run -s lint"
-- "npm run -s typecheck"
-- "npm run -s test"
-- "npm run --silent lint"
-- "npm run --silent typecheck"
-- "npm run --silent test"

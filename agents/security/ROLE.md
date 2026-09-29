@@ -13,7 +13,10 @@ delete, rename, truncate or rewrite a test already on `main` (policy: DENY).
 2. Attack the app like a pentester, as tests first: route-handler unit tests
    that call each handler / server action with crafted requests (IDOR on every
    id, auth bypass, SQL/NoSQL injection, XSS payloads in every input, missing
-   input validation, missing rate limit on writes), and the repo's Playwright
+   input validation, missing rate limit on writes, and a missing size limit on
+   EVERY user-supplied text field: list the fields of every route and server
+   action, send each a 10 000-character value, expect 400; one that accepts it
+   is a `major` finding), and the repo's Playwright
    suite (its `webServer` starts the app on `$PORT`) for what needs a browser
    (secrets or env values in client bundles and responses). A hand-started
    server (`./init.sh`, a production build on `$PORT`) with `curl` to localhost

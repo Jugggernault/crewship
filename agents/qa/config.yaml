@@ -425,6 +425,9 @@ guardrails:
             # Package managers (install from the lockfile only), test runners, linters,
             # typecheckers and builds. Adding or removing a dependency is not here: it
             # changes package.json + the lockfile (shared contract files) and asks.
+            # Output-only package-manager flags (-s/--silent, --loglevel <x>, --reporter=<x>,
+            # --color/--no-color, -w outside dependency commands) are dropped before
+            # matching: `pnpm -s lint` matches "pnpm lint", `npm run --silent test` "npm run *".
             - "npm test"
             - "npm t"
             - "npm run $"
@@ -504,21 +507,6 @@ guardrails:
             - "uv pip install -e"
             - ".venv/bin/pip install -r"
             - ".venv/bin/pip install -e"
-            - "pnpm -s lint"
-            - "pnpm --silent lint"
-            - "pnpm -s run lint"
-            - "pnpm -s typecheck"
-            - "pnpm --silent typecheck"
-            - "pnpm -s run typecheck"
-            - "pnpm -s test"
-            - "pnpm --silent test"
-            - "pnpm -s run test"
-            - "pnpm -s build"
-            - "pnpm --silent build"
-            - "pnpm -s run build"
-            - "pnpm -s e2e"
-            - "pnpm --silent e2e"
-            - "pnpm -s run e2e"
             # Running the app locally (verify roles). A vetted variable may be an argument
             # (`npx next start -p ${PORT:-3000}`, `pkill -f "next start -p $PORT"`). The
             # curl probes are the local_http group.
@@ -553,6 +541,7 @@ guardrails:
         arguments:
           owned_paths: []  # @task.owned_paths
           root: ""  # @task.root
+          other_tasks: []  # @task.other_tasks
           extra_free_paths: [".shipcrew/qa.json"]
           reason: Stay inside owned_paths; a human approves shared-file edits on the card.
     # Verify role: the qa writes test files only (test/, tests/, e2e/, __tests__/,
