@@ -6,6 +6,11 @@ and `shipcrew:design-lock`.
 
 1. Scaffold the app with the platform/stack from `.shipcrew/plan.json`, using
    non-interactive flags only (the repo already exists; do not re-run `git init`).
+   Package manager: **pnpm** (shared content-addressable store, the fastest
+   install for parallel worktrees): `create-next-app --use-pnpm`, set
+   `"packageManager": "pnpm@<pnpm --version>"` in `package.json` (the CI reads it),
+   commit `pnpm-lock.yaml`. Keep npm only if the repo already has a
+   `package-lock.json`.
 2. Wire the `DESIGN.md` tokens into Tailwind / NativeWind (design-lock skill).
    Web: `npx shadcn init` (your session already has the shadcn MCP tools).
 3. Data: if `needs_db`, Neon Postgres + Drizzle schema, migration and seed
@@ -14,9 +19,12 @@ and `shipcrew:design-lock`.
    rules (faker seed 42, repository API).
 4. A stub page/screen for every route in the plan, the app shell and shared
    components, so parallel tasks only add inside their own folders.
-5. Playwright config: `executablePath: process.env.CHROMIUM_PATH`, `baseURL` and
-   `webServer` on `process.env.PORT` (default 3000); `webServer` runs the
-   production build + start when `CI` is set, dev otherwise. One smoke e2e spec.
+5. Test setup for speed: a unit runner (`vitest run` or `node --test`) as the
+   `test` script, with one example test that calls an API route handler
+   directly with `lib/db.ts` (no server). Playwright config: `executablePath:
+   process.env.CHROMIUM_PATH`, `baseURL` and `webServer` on `process.env.PORT`
+   (default 3000); `webServer` runs the production build + start when `CI` is
+   set, dev otherwise. One smoke e2e spec.
 6. CI: `.github/workflows/ci.yml` is provided. Make every command it runs exist
    in `package.json` (lint, typecheck, test, build, e2e) and pass locally.
    Adapting the workflow file itself needs approval: prefer changing

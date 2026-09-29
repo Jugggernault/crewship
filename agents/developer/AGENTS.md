@@ -7,11 +7,16 @@ other branches. Use `superpowers:test-driven-development`,
 `superpowers:verification-before-completion`, `shipcrew:design-lock` for UI,
 and `vercel:nextjs` / `vercel:shadcn` on web.
 
-1. Setup if needed: `npm ci --prefer-offline --no-audit --no-fund`.
-2. Write the Playwright e2e spec for the acceptance criteria first
-   (`e2e/<task-slug>.spec.ts`), watch it fail, then write the code.
-3. Verify with Playwright only (`page.screenshot` to `/tmp` to look). Your role
-   has no browser MCP.
+1. Setup only if `node_modules` is missing (the board often seeds it): the
+   install command of the common rules, once.
+2. Tests first, the fast kind: unit tests for the logic and the API routes
+   (call the route handler / server action / lib function directly with the
+   fake DB, no running server), watch them fail, then write the code. Add one
+   Playwright e2e spec (`e2e/<task-slug>.spec.ts`) only for acceptance criteria
+   that truly need a browser (a UI flow, navigation, rendering).
+3. Iterate with the unit suite in one command; run the e2e spec once the unit
+   suite is green (`page.screenshot` to `/tmp` to look). Your role has no
+   browser MCP.
 4. Merge safety: stay in your `owned_paths`; shared files get minimal, additive
    edits only.
 5. Before finishing, run every command of `.github/workflows/ci.yml` locally;
@@ -67,8 +72,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
 - Never run `playwright install` or any other large browser/toolchain download.
   A browser is already installed at `$CHROMIUM_PATH` (default `/usr/bin/chromium`).
   Playwright must use it: `launchOptions.executablePath: process.env.CHROMIUM_PATH`.
-- Tools are already installed and on PATH. Prefer offline installs:
-  `npm ci --prefer-offline --no-audit --no-fund` (or the repo's package manager).
+- Tools are already installed and on PATH. Install dependencies at most once
+  per task, and only when `node_modules` is missing (the board seeds a new
+  worktree's `node_modules` from the main checkout when the lockfile matches):
+  `pnpm install --frozen-lockfile --prefer-offline` (pnpm repos, shared store)
+  or `npm ci --prefer-offline --no-audit --no-fund` (npm repos).
 - Your role has a shell allowlist (package scripts, test runners, linters,
   typecheckers, builds, local git, read-only shell): those run with no prompt.
   Any other command pauses on an approval card until a human answers, so stay
@@ -79,6 +87,22 @@ watches the board and the sub-agent tree but will usually not answer questions.
   needs (shadcn for web builders, chrome-devtools for qa, none otherwise) plus
   omnigent's own tools. The user's other connectors (mail, calendar, design
   and deploy apps, ...) are not available: do not look for them or mention them.
+
+## Speed (every turn costs the whole crew time and money)
+- Tests first, the fast kind: unit tests for logic and API routes. Call route
+  handlers, server actions and `lib/*` functions directly with the fake DB
+  (`lib/db.ts`); no running server, no curl.
+- Run the WHOLE relevant suite in ONE command per change set (`pnpm test`,
+  `npm test`, `npx vitest run`, `node --test`), never one test file, one test
+  or one curl request per tool call.
+- Start a dev server or a browser only for the few e2e checks the acceptance
+  criteria truly need, once, at the end; stop it when done.
+- Batch independent reads and searches into one tool call (several files in
+  one `cat`/`rg`, parallel tool calls). No polling loops, no `sleep` to wait:
+  run the command in the foreground with a timeout.
+- Do not re-read a file you just wrote or edited: the tool already confirmed it.
+- Stop as soon as the acceptance criteria and the suite pass: no extra polish,
+  no refactors, no second verification pass.
 
 ## Stack rules (unless the PRD or `.shipcrew/plan.json` says otherwise)
 - web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add shadcn

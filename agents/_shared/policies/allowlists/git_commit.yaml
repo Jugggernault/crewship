@@ -1,0 +1,4 @@
+# Commit on the task branch only (verify roles commit the tests they wrote).
+# No branch/checkout/reset/merge: those rewrite files or history.
+- "git add"
+- "git commit"

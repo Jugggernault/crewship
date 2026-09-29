@@ -23,8 +23,8 @@ provider configured with `omnigent setup`.
 | `developer` | `claude-native` | `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `shipcrew:design-lock`, `vercel:nextjs`, `vercel:shadcn`, shadcn MCP | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `reviewer` | `claude-native`, a fresh session each round | `code-review`, `security-review`, `shipcrew:design-lock` | read-only shell allowlist plus test runners; read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
 | `integrator` | `claude-native` | bundled: `resolve-conflicts` | builder allowlist, owned paths | `PASS` / `FAIL` |
-| `qa` | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | qa allowlist (read, test, run the app, curl localhost; no shell writes); writes only `.shipcrew/qa.json` | `PASS` / `FAIL: <n> failures` |
-| `security` | `claude-native` | `security-review` (curl + Playwright, no browser MCP) | security allowlist (builder + run the app, curl localhost), owned paths | `PASS` / `FAIL` |
+| `qa` (verify) | `claude-native` | `shipcrew:design-lock`, `impeccable`, chrome-devtools MCP | verify allowlist (read, test, run the app, curl localhost, `git add`/`commit`); writes only test files inside its owned paths and `.shipcrew/qa.json` (`shipcrew_test_writes_only`) | findings JSON + `PASS` / `FAIL: <n> failures` |
+| `security` (verify) | `claude-native` | `security-review`, chrome-devtools MCP | verify allowlist (as qa); writes only PoC/regression tests inside its owned paths and `.shipcrew/security.md` | findings JSON + `PASS` / `FAIL` |
 | `devops` | `claude-native` | `vercel:deploy`, `vercel:deployments-cicd` | devops allowlist (read-only + Vercel reads); writes only `.shipcrew/deploy.json` | `PASS` / `FAIL` |
 
 Permissions are set up so that nothing ever uses `bypassPermissions` (see
@@ -95,6 +95,7 @@ are configured from `_shared/policies/`:
 |---|---|---|
 | `shipcrew_shell_allowlist` | `shell_allowlist_<profile>.yaml` | A shell command runs with **no prompt** when every simple command in it (split on `;` `&&` `\|\|` `\|` `&` and newlines, quote-aware) matches the role's allowlist. Anything else is **ASK**. So is a command with `$(..)`, backticks, `<(..)` or a heredoc, except Claude Code's `git commit -m "$(cat <<'EOF' ... EOF)"` idiom. An env prefix is allowed only for known names (`CI`, `CHROMIUM_PATH`, `PORT`, `NODE_ENV` ...). `timeout`/`time`/`nohup`, `/usr/bin/` and `node_modules/.bin/` prefixes, `pnpm exec` and `git --no-pager` are unwrapped first. |
 | `shipcrew_owned_paths` | `owned_paths.yaml` | A write outside the task's `owned_paths` is **ASK**. That covers Write/Edit/MultiEdit/NotebookEdit/`sys_os_write`, shell redirections, `cp`/`mv`/`rm`/`touch`/`mkdir`/`tee`/`chmod`, `git mv`/`rm`/`restore`/`checkout --`, `prettier --write`, `eslint --fix`, `ruff format`, and dependency changes (`npm install <pkg>` and similar). A write to `package.json`, a lockfile or `pyproject.toml`, at any depth, is **ASK** unless the task lists that file by name. `cd` and `git -C` are tracked. Always free: build output and caches (`node_modules`, `.next`, `dist`, `coverage`, `test-results` ...) and, outside the worktree, `/tmp` and `/dev/null`. Reads are never gated. |
+| `shipcrew_test_writes_only` | `test_writes_<role>.yaml` (qa, security) | Verify roles write **test files only**: `test/**`, `tests/**`, `e2e/**` (top level), `**/__tests__/**`, `**/__snapshots__/**`, `**/*.test.*`, `**/*.spec.*`, plus their report file. Any other write (write tools and shell targets, as for owned paths) is **DENY**, with a reason that says to report the defect instead: the board turns a `FAIL` into a developer fix task. Combined with `shipcrew_owned_paths` (`owned_paths_<role>.yaml`, report file free), a test outside the task's owned paths still ASKs. The PR loop re-checks the whole diff: a non-test file in a verify PR needs a human approval. |
 | `shipcrew_orchestrator_push_guard` | `orchestrator_push_guard.yaml` | Every `git push` must name refspecs, and each one must be `shipcrew/<first 8 chars of the task id>-<slug>` (the one branch scheme the server's worktrees use too). Anything else is **DENY**. `gh pr merge` / `repo delete` / `release create` are **ASK**. |
 
 Allowlists are built from shared command groups in
@@ -105,8 +106,7 @@ is expanded by `build_agents.py`:
 |---|---|
 | builder (developer, designer, integrator) | `read_only`, `git_read`, `git_write`, `fs_write`, `dev_tools` |
 | scaffolder | builder + `scaffold` (create-next-app, shadcn, drizzle-kit, `npm install <pkg>`) |
-| security | builder + `run_app` |
-| qa | `read_only`, `git_read`, `dev_tools`, `run_app`; `shell_writes: false` |
+| security, qa (verify roles) | `read_only`, `git_read`, `git_commit` (`git add`, `git commit`), `fs_write`, `dev_tools`, `run_app`; every write target judged by `shipcrew_test_writes_only` + owned paths |
 | read-only (planner) | `read_only`, `git_read`; `shell_writes: false` |
 | reviewer | `read_only`, `git_read`, `test_runners` (npm test, node --test, vitest run, jest, pytest); `shell_writes: false` |
 | devops | `read_only`, `git_read`, `vercel_read`; `shell_writes: false` |
@@ -247,6 +247,29 @@ developer ran `npm test` and `git commit` with no prompt. A chained
 The reviewer's `npm test` asked on the read-only allowlist, which led to the
 reviewer's own `test_runners` allowlist.
 
+## Verify roles and fix tasks (board)
+
+`qa` and `security` verify merged work; they never implement a feature. When
+their session ends, the board's PR loop (`omnigent/shipcrew/verify.py` in the
+fork) reads the verdict line and the findings JSON block:
+
+- `PASS`, no blocker/major finding, no commits: the card is done (`merged`,
+  nothing to merge, worktree removed).
+- `PASS` with commits (the tests it added, which pass): a normal PR (CI, then
+  the reviewer is skipped because the diff is tests-only, merge).
+- `FAIL`, or a blocker/major finding: ONE developer task `Fix: <title>` in the
+  same mission (findings with `file:line` and repro, the report file, "add a
+  regression test"; owned paths = the files the findings name, else the verify
+  task's own), Ready. Tests the verify task wrote stay on a local branch
+  `shipcrew-tests/<id8>-<n>` named in the fix body (`git checkout <branch> --
+  <files>`). The verify card goes back to Ready with the fix in `depends_on`
+  and re-runs from the merged fix. After 2 fix cycles it is held in
+  Intervention with the reason.
+
+The planner never gives a verify role an implementation task, and for a small
+PRD (5 features or fewer) plans one final `qa` task whose checklist includes
+the security items.
+
 ## Layout
 
 ```
@@ -305,7 +328,7 @@ For each bundle, the validator does the following:
   - the MCP set per role (`MCP_SERVERS`): `strict_mcp_config` on, exactly the
     expected servers, `allowed_tools`' `mcp__*` entries match, and the derived
     launch args (claude-native) or spawn env (claude-sdk) carry the strict flag;
-- builds every guardrail through omnigent's factory path and runs 117
+- builds every guardrail through omnigent's factory path and runs 124
   tool-call cases per bundle (plus the dispatch cap), expecting a specific
   ALLOW, ASK or DENY for each. The cases cover:
   - allowlisted commands (ALLOW, no prompt);

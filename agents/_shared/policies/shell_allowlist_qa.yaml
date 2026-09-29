@@ -1,6 +1,7 @@
-# QA shell allowlist: read, test, run the app, curl to localhost only. No git
-# writes, no file operations, no redirection into files except /dev/null and
-# /tmp (qa writes only .shipcrew/qa.json, with the Write tool). Anything else asks.
+# QA shell allowlist: read, test, run the app, curl to localhost only, plus file
+# operations and `git add` / `git commit` for the tests it writes. Every write
+# target is judged by shipcrew_test_writes_only (tests + .shipcrew/qa.json only)
+# and shipcrew_owned_paths. Anything else asks.
 shipcrew_shell_allowlist:
   type: function
   on: [tool_call]
@@ -8,10 +9,12 @@ shipcrew_shell_allowlist:
     path: omnigent.shipcrew.policies.shell_allowlist
     arguments:
       role: qa
-      shell_writes: false
+      shell_writes: true
       reason: A human approves or denies it on the approval card.
       allow:
         # @include allowlists/read_only
         # @include allowlists/git_read
+        # @include allowlists/git_commit
+        # @include allowlists/fs_write
         # @include allowlists/dev_tools
         # @include allowlists/run_app
