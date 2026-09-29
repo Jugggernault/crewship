@@ -222,6 +222,13 @@ guardrails:
             - "gh issue list"
             - "gh repo view"
             - "gh auth status"
+            # xargs feeding a read-only command only
+            - "xargs cat"
+            - "xargs head"
+            - "xargs wc"
+            - "xargs grep"
+            - "xargs ls"
+            - "xargs rg"
             # git inspection. No remote writes, no config changes.
             - "git status"
             - "git diff !--output*"
@@ -331,6 +338,13 @@ guardrails:
             - "gh issue list"
             - "gh repo view"
             - "gh auth status"
+            # xargs feeding a read-only command only
+            - "xargs cat"
+            - "xargs head"
+            - "xargs wc"
+            - "xargs grep"
+            - "xargs ls"
+            - "xargs rg"
             # git inspection. No remote writes, no config changes.
             - "git status"
             - "git diff !--output*"
