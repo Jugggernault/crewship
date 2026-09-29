@@ -111,6 +111,7 @@ COMMITTERS = (*BUILDERS, *VERIFIERS)  # commit on the task branch
 RUNNERS = COMMITTERS  # run tests, linters, builds
 READERS = ("reviewer", "devops", "planner")  # read-only shell
 TESTERS = (*RUNNERS, "reviewer")  # may re-run the test suite
+INSTALLERS = TESTERS  # lockfile-pinned install (fresh review worktrees need it)
 WRITE_LIMITED = ("reviewer", "devops", "planner", *VERIFIERS)  # refused outside their files
 
 
@@ -303,7 +304,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     # shell allowlists: allowlisted commands run with no prompt, the rest ASK
     ("npm test", *_bash("npm test"), _only(TESTERS)),
     ("npm test piped", *_bash("npm test 2>&1 | tail -40"), _only(TESTERS)),
-    ("npm ci", *_bash("npm ci --prefer-offline --no-audit --no-fund"), _only(RUNNERS)),
+    ("npm ci", *_bash("npm ci --prefer-offline --no-audit --no-fund"), _only(INSTALLERS)),
     ("vitest", *_bash("npx vitest run src/cart.test.ts"), _only(TESTERS)),
     ("pytest", *_bash("uv run pytest -q tests/"), _only(TESTERS)),
     (
@@ -504,7 +505,7 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
             "cat DESIGN.md app/api/polls/\\[id\\]/route.ts; "
             'grep -n "export\\|seed" lib/db.ts | head -40; wait'
         ),
-        _only(RUNNERS),
+        _only(INSTALLERS),
     ),
     (
         "default in a vetted env prefix",

@@ -1,9 +1,20 @@
 # Test runners only (the reviewer re-runs the suite on the diff it reviews).
-# No installs, builds, formatters or `npm run *`: those stay with the builders.
+# Plus the read-only checks (typecheck, lint) and a lockfile-pinned install so a
+# fresh review worktree can run them. No new deps, builds or formatters.
 - "npm test"
 - "npm t"
 - "pnpm test"
 - "yarn test"
+- "npm run typecheck"
+- "npm run lint"
+- "pnpm typecheck"
+- "pnpm run typecheck"
+- "pnpm lint"
+- "pnpm run lint"
+- "npx tsc --noEmit"
+- "npm ci"
+- "pnpm install --frozen-lockfile"
+- "pnpm i --frozen-lockfile"
 - "node --test"
 - "npx vitest run"
 - "vitest run"
