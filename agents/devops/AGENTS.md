@@ -97,8 +97,10 @@ human watches the board but will usually not answer questions.
   `.github/workflows/**` (needs a human): make the `package.json` scripts match
   it (`lint`, `typecheck`, `test`, `build`, `e2e`, each run only when defined).
 - Never `playwright install` or any large download: the browser is at
-  `$CHROMIUM_PATH` (default `/usr/bin/chromium`); Playwright uses
-  `launchOptions.executablePath: process.env.CHROMIUM_PATH`.
+  `$CHROMIUM_PATH` (default `/usr/bin/chromium`, or a lighter headless-only
+  build); Playwright uses `launchOptions.executablePath:
+  process.env.CHROMIUM_PATH`, always headless: never `headless: false`,
+  `--headed`, `--ui`, `--debug` or `page.pause()`.
 - Install dependencies at most once, only if `node_modules` is missing (the
   board seeds it), with the lockfile's manager: `pnpm install --frozen-lockfile
   --prefer-offline`, `npm ci --prefer-offline --no-audit --no-fund`, `yarn

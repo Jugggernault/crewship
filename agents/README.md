@@ -14,6 +14,16 @@ provider configured with `omnigent setup`.
 
 ## Roles
 
+Harness column = how the bundle is authored. The server may run a
+claude-native worker headless instead: `SHIPCREW_WORKER_HARNESS` (omnigent
+fork, `omnigent/shipcrew/harness.py`; default `auto` = claude-sdk for
+developer, reviewer, integrator and devops) renders the uploaded copy for
+claude-sdk at session creation (`permission_mode: auto`, no `allowed_tools` /
+`mcp_config`; the guardrails, owned paths, strict MCP and setting sources are
+unchanged). `validate_agents.py` checks that rendering for every worker bundle
+with the tool calls spelled as the SDK makes them (`sys_os_*`). Measurements
+and the trade-offs: `docs/shipcrew/RESOURCES.md` in the fork.
+
 | role | harness | skills it uses | guardrails (on top of the common set) | verdict line |
 |---|---|---|---|---|
 | `shipcrew` (orchestrator) | `claude-sdk`, `spawn: true`, `tools.agents` = the 9 roles | bundled: `plan`, `dispatch`, `verify` | pushes only `shipcrew/<id8>-<slug>` task branches, each named explicitly (every push of a chained command is checked), never `main`/`master`/`HEAD`, `--all`/`--mirror`/`--tags`/`--delete`/`+refspec`; `gh pr merge` / `repo delete` / `release create` ASK; max 6 dispatches per turn; every dispatch declares a purpose (`plan`, `implement`, `review`, `verify`, `explore`, `search`) | `PASS` / `FAIL: <reason>` |
