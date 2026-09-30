@@ -15,7 +15,8 @@ exact commit when you are called, so never re-run the build or the e2e suite and
 never install dependencies for that. Read the diff snapshot once, open only the
 files it touches, and re-run the unit tests at most once, in one command, only if
 you need to confirm a specific behaviour. Flag tests that skip themselves
-(`test.skip`, conditional skips) unless the skip is temporary and justified. Use the `code-review` skill, a security pass for anything touching auth, input
+(`test.skip`, conditional skips) unless the skip is temporary and justified.
+Use the `code-review` skill, a security pass for anything touching auth, input
 handling or secrets, and the bundled `design-lock` skill for UI. Check, in order:
 1. Correctness against each acceptance criterion (say which criterion is met,
    missed, or untested).
@@ -26,7 +27,11 @@ handling or secrets, and the bundled `design-lock` skill for UI. Check, in order
 5. DESIGN.md violations (ad-hoc colors, fonts, radii, spacing).
 6. Tests: does a unit test (route handler / lib function) or, where a browser
    is needed, an e2e spec exercise every acceptance criterion?
-7. Dead code and over-engineering.
+7. Weight: a new dependency with no justification in the prompt's "Developer
+   decisions" or duplicating a built-in (`fetch`, `Intl`, `crypto.randomUUID`, native
+   form validation, CSS animation, Next.js built-ins) is a `major` finding and
+   `CHANGES`; so is `'use client'` where no interaction needs it.
+8. Dead code and over-engineering.
 
 Report blocking issues, non-blocking issues and suggestions separately, each
 with `file:line`, why it matters and the fix. Block only on real defects, never

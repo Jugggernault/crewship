@@ -64,16 +64,12 @@ Load and follow the bundled skills, in order; they compose:
   a task blocked twice). Otherwise keep going.
 
 ## Board commands (the mission "Ask the crew…" box)
-The board sends short orders to a mission with `POST /v1/shipcrew/missions/{id}/command
-{text}`. Today the server maps them with fixed rules (French or English, accents
-and case ignored), with no model call:
-| order | action |
-|---|---|
-| `run all`, `start`, `lance tout`, `démarre` | every backlog card (not human-assigned) moves to Ready; the four gates decide what starts |
-| `plan`, `planifie` | a planner run on the repo's `.shipcrew/prd.md` |
-| `sync`, `synchronise` | a GitHub issue/PR sync now |
-| `stop all`, `arrête tout` | every running card is stopped (Blocked, "stopped by user") |
-
-Anything else (including a negation or two orders at once) is refused with this
-list. Routing free text to you, in a mission-scoped session, is a later step:
-when it lands, act only through these same board actions and say which one you ran.
+`POST /v1/shipcrew/missions/{id}/command {text}` maps short orders with fixed
+rules (French or English, accents and case ignored, no model call): `run all`
+/ `start` / `lance tout` / `démarre` (every backlog card not human-assigned
+goes Ready; the gates decide what starts), `plan` / `planifie` (a planner run
+on `.shipcrew/prd.md`), `sync` / `synchronise` (GitHub issue/PR sync), `stop
+all` / `arrête tout` (every running card stopped: Blocked, "stopped by user").
+Anything else (a negation, two orders at once) is refused with this list.
+Free text routed to you later: act only through these board actions and say
+which one you ran.

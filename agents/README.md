@@ -55,6 +55,15 @@ asking, one line each, or `Decisions: none`. The omnigent fork parses it
 fix turns) and the planner's into `mission.plan_decisions`; the board drawer
 and the mission report show them.
 
+Generated apps stay light (`_shared/COMMON.md`, "Keep the app light"): every
+dependency is justified in `Decisions:`, platform / framework built-ins come
+first, the Foundation installs only the minimal toolchain (one unit runner, one
+e2e runner, faker for `lib/db.ts`) and answers every API stub with a valid
+empty shape (never 501), and the reviewer gets the developer's decisions in its
+prompt and flags an unjustified or built-in-duplicating dependency (`major`,
+`CHANGES`). Each generated `AGENTS.md` is kept near 12 KB: COMMON.md is the
+only shared text, ROLE.md files do not repeat it.
+
 Nobody plans a deploy task any more. When every agent task of a mission is
 merged, the server ships it (`omnigent/shipcrew/ship.py`): a `devops` session
 in a fresh worktree of `main` runs `vercel link --yes --project <repo-name>`
@@ -450,10 +459,11 @@ For each bundle, the validator does the following:
     launch args (claude-native) or spawn env (claude-sdk) carry the strict flag;
 - checks `setting_sources` is `project,local` and reaches the launch args
   (`--setting-sources`) or the SDK spawn env;
-- builds every guardrail through omnigent's factory path and runs 256
-  tool-call cases per bundle (240 under the feature contract, with one other
+- builds every guardrail through omnigent's factory path and runs 260
+  tool-call cases per bundle (244 under the feature contract, with one other
   in-progress task owning `lib/polls-api/**`; 16 under a Foundation contract
-  that owns `**` + `package.json`), including round 7's refusals with a hint
+  that owns `**` + `package.json`), including round 8's ANSI-C strings (the live reviewer chain with
+  `grep -c $'\u00a0' f` is ALLOW, `git diff $'--output=x'` still asks), round 7's refusals with a hint
   (complex `sed -i` / `perl -pi`, another task's file, next to the simple
   substitution and the nobody's-file ASK that stay), the package-manager
   output flags (`pnpm -s lint`, `npm run --silent typecheck`, `pnpm -s run
