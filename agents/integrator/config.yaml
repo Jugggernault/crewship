@@ -544,6 +544,11 @@ guardrails:
             # shipcrew_owned_paths (and the workflows guard).
             - "@sed:sed_in_place"
             - "@perl:perl_in_place"
+            # shadcn components through the CLI (the shadcn MCP costs ~265 MB per session
+            # and is not loaded). Exactly `add`, into the configured components folder:
+            # no other cwd or path, no overwrite of an existing component, no `--all`.
+            - "pnpm dlx shadcn@latest add !-c !--cwd* !-p !--path* !-o !--overwrite !-a !--all"
+            - "npx shadcn@latest add !-c !--cwd* !-p !--path* !-o !--overwrite !-a !--all"
             # curl to the app on this machine only: localhost / 127.0.0.1 / [::1] / 0.0.0.0,
             # any port and method, headers, inline data (-d '{..}'), -w, -s, -i. Output
             # files (-o) are write targets (owned paths / test writes; /dev/null and /tmp

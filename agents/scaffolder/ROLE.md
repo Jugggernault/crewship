@@ -17,7 +17,7 @@ allows. Use the bundled `design-lock` skill for the design tokens.
    `postcss.config.mjs`, `eslint.config.mjs`, `app/layout.tsx`,
    `app/globals.css`, `app/page.tsx` with the Write tool. Web: `npx
    shadcn@latest init -d` in place, then only the components the shell uses
-   (tasks add theirs). Mobile: the Expo equivalent.
+   with `pnpm dlx shadcn@latest add <component> --yes` (tasks add theirs). Mobile: the Expo equivalent.
 3. Wire the `DESIGN.md` tokens into Tailwind / NativeWind (design-lock).
 4. Data: `needs_db`: Neon Postgres + Drizzle schema, migration, seed (the
    environment has the credentials). Otherwise `lib/db.ts` with the

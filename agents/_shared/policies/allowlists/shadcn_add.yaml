@@ -1,0 +1,5 @@
+# shadcn components through the CLI (the shadcn MCP costs ~265 MB per session
+# and is not loaded). Exactly `add`, into the configured components folder:
+# no other cwd or path, no overwrite of an existing component, no `--all`.
+- "pnpm dlx shadcn@latest add !-c !--cwd* !-p !--path* !-o !--overwrite !-a !--all"
+- "npx shadcn@latest add !-c !--cwd* !-p !--path* !-o !--overwrite !-a !--all"

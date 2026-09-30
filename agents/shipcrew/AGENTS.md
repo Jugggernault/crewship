@@ -157,9 +157,8 @@ human watches the board but will usually not answer questions.
   git / file command, asks. Use the repo's `playwright.config.*`, never a copy.
 - Quiet output (`NO_COLOR=1`, `--reporter=dot`, `--silent`, `pnpm -s`, `| tail
   -40`), never ANSI stripping with `sed`.
-- MCP servers, skills and plugins are scoped per role (shadcn for web
-  builders, chrome-devtools for qa, your bundled skills); the host user's are
-  not loaded. Do not look for others.
+- MCP servers, skills and plugins are scoped per role (chrome-devtools for
+  qa and security, your bundled skills); the host user's are not loaded. Do not look for others.
 
 ## Speed (every turn costs the crew time and money)
 - Tests first, the fast kind: call route handlers, server actions and `lib/*`
@@ -175,8 +174,10 @@ human watches the board but will usually not answer questions.
 - Stop when the acceptance criteria and the suite pass: no polish, no second pass.
 
 ## Stack rules (unless the PRD or the plan says otherwise)
-- web: Next.js App Router + TypeScript + Tailwind + shadcn/ui (components via
-  the shadcn MCP tools or `npx shadcn add`, never pasted by hand).
+- web: Next.js App Router + TypeScript + Tailwind + shadcn/ui. Add a
+  component with the CLI, never pasted by hand: `pnpm dlx shadcn@latest add
+  <component> --yes` (`npx shadcn@latest add <component> --yes` in an npm
+  repo); no shadcn MCP.
 - mobile: Expo + TypeScript + NativeWind + React Native Reusables; Jest + RNTL;
   e2e through Expo web + Playwright.
 - `DESIGN.md` is law: the `design-lock` skill on every UI change (tokens only).

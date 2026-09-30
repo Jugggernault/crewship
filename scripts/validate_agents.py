@@ -77,9 +77,10 @@ SDK_BUNDLES = {"planner", ORCHESTRATOR}  # claude-sdk; every other role is claud
 # plugins or claude.ai connectors (Gmail, Canva, Notion, Vercel, ...) leak in.
 MCP_SERVERS: dict[str, set[str]] = {
     "planner": set(),
-    "designer": {"shadcn"},
-    "scaffolder": {"shadcn"},
-    "developer": {"shadcn"},
+    # No shadcn MCP (~265 MB per session): builders use the shadcn CLI.
+    "designer": set(),
+    "scaffolder": set(),
+    "developer": set(),
     "reviewer": set(),
     "integrator": set(),
     "qa": {"chrome-devtools"},
@@ -156,6 +157,8 @@ def _write_verdicts(builders: str, **overrides: str) -> dict[str, str]:
     base.update(overrides)
     return base
 
+
+SHADCN = ("builder", "scaffolder")
 
 COMMIT_HEREDOC = (
     "git add -A && git commit -m \"$(cat <<'EOF'\nfeat(cart): add cart page\n\n"
@@ -370,6 +373,14 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("init.sh", *_bash("./init.sh"), _only(("security", "qa"))),
     ("npm install pkg", *_bash("npm install lodash"), _no_verify(_only(()))),
     ("create-next-app", *_bash("npx create-next-app@latest . --ts --yes"), _only(("scaffolder",))),
+    # shadcn components through the CLI only (no shadcn MCP), exactly `add`
+    ("shadcn add (pnpm dlx)", *_bash("pnpm dlx shadcn@latest add button --yes"), _only(SHADCN)),
+    ("shadcn add (npx)", *_bash("npx shadcn@latest add dialog card --yes"), _only(SHADCN)),
+    ("shadcn add --cwd", *_bash("pnpm dlx shadcn@latest add button --yes --cwd /tmp/x"), _only(())),
+    ("shadcn add --overwrite", *_bash("pnpm dlx shadcn@latest add button -y --overwrite"), _only(())),
+    ("shadcn add --path", *_bash("pnpm dlx shadcn@latest add button --path ../other"), _only(())),
+    ("shadcn other version", *_bash("pnpm dlx shadcn@2 add button"), _only(())),
+    ("shadcn mcp", *_bash("pnpm dlx shadcn@latest mcp"), _only(())),
     ("vercel ls", *_bash("vercel ls --prod"), _only(("devops",))),
     ("vercel inspect", *_bash("vercel inspect https://x.vercel.app --wait"), _only(("devops",))),
     ("vercel deploy", *_bash("vercel deploy --prod"), _only(())),

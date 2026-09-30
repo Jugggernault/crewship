@@ -17,7 +17,8 @@ provider configured with `omnigent setup`.
 Harness column = how the bundle is authored. The server may run a
 claude-native worker headless instead: `SHIPCREW_WORKER_HARNESS` (omnigent
 fork, `omnigent/shipcrew/harness.py`; default `auto` = claude-sdk for
-developer, reviewer, integrator and devops) renders the uploaded copy for
+every worker but qa and security, which keep claude-native for the
+chrome-devtools MCP) renders the uploaded copy for
 claude-sdk at session creation (`permission_mode: auto`, no `allowed_tools` /
 `mcp_config`; the guardrails, owned paths, strict MCP and setting sources are
 unchanged). `validate_agents.py` checks that rendering for every worker bundle
@@ -28,9 +29,9 @@ and the trade-offs: `docs/shipcrew/RESOURCES.md` in the fork.
 |---|---|---|---|---|
 | `shipcrew` (orchestrator) | `claude-sdk`, `spawn: true`, `tools.agents` = the 9 roles | bundled: `plan`, `dispatch`, `verify` | pushes only `shipcrew/<id8>-<slug>` task branches, each named explicitly (every push of a chained command is checked), never `main`/`master`/`HEAD`, `--all`/`--mirror`/`--tags`/`--delete`/`+refspec`; `gh pr merge` / `repo delete` / `release create` ASK; max 6 dispatches per turn; every dispatch declares a purpose (`plan`, `implement`, `review`, `verify`, `explore`, `search`) | `PASS` / `FAIL: <reason>` |
 | `planner` (PM + architect) | `claude-sdk` | none | read-only shell allowlist; writes only `.shipcrew/plan.json` | `PASS` / `FAIL` |
-| `designer` | `claude-native` | bundled: `design-lock`; shadcn MCP | builder allowlist, owned paths | `PASS` / `FAIL` |
-| `scaffolder` | `claude-native` | bundled: `design-lock`; shadcn MCP | scaffolder allowlist (builder + generators, dependency removals), owned paths | `PASS` / `FAIL` |
-| `developer` | `claude-native` | bundled: `design-lock`; shadcn MCP | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `designer` | `claude-native` | bundled: `design-lock`; shadcn CLI | builder allowlist, owned paths | `PASS` / `FAIL` |
+| `scaffolder` | `claude-native` | bundled: `design-lock`; shadcn CLI | scaffolder allowlist (builder + generators, dependency removals), owned paths | `PASS` / `FAIL` |
+| `developer` | `claude-native` | bundled: `design-lock`; shadcn CLI | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `reviewer` | `claude-native`, a fresh session each round | built-in `code-review`; bundled: `design-lock` | read-only shell allowlist plus test runners; read-only (`read_only_os`: every write/edit refused) | `APPROVE` / `CHANGES: <summary>` |
 | `integrator` | `claude-native` | bundled: `resolve-conflicts` | builder allowlist, owned paths | `PASS` / `FAIL` |
 | `qa` (verify) | `claude-native` | bundled: `design-lock`; chrome-devtools MCP | verify allowlist (read, test, run the app, curl localhost, `git add`/`commit`); writes only test files inside its owned paths and `.shipcrew/qa.json` (`shipcrew_test_writes_only`) | findings JSON + `PASS` / `FAIL: <n> failures` |
@@ -104,10 +105,15 @@ servers. That saves context and narrows what a prompt-injected agent can reach.
 
 | role | MCP servers |
 |---|---|
-| `developer`, `scaffolder`, `designer` | `shadcn` (`npx -y shadcn@latest mcp`) |
-| `qa` | `chrome-devtools` (headless, `--isolated`, `${CHROMIUM_PATH:-/usr/bin/chromium}`) |
+| `qa`, `security` | `chrome-devtools` (headless, `--isolated`, `${CHROMIUM_PATH:-/usr/bin/chromium}`) |
 | `devops` | none (deploys with the `vercel` CLI) |
-| `reviewer`, `integrator`, `security`, `planner`, `shipcrew` | none |
+| `developer`, `scaffolder`, `designer`, `reviewer`, `integrator`, `planner`, `shipcrew` | none |
+
+No shadcn MCP (it cost ~265 MB per session): the web builders add components
+with the CLI, `pnpm dlx shadcn@latest add <component> --yes` / `npx
+shadcn@latest add <component> --yes`, the only shadcn form their allowlist
+runs with no prompt (`_shared/policies/allowlists/shadcn_add.yaml`: no
+`--cwd`, `--path`, `--overwrite` or `--all`).
 
 The servers live in `_shared/mcp/<server>.json` (one server object each). A
 bundle names them on its `# >>> shipcrew-mcp: <server> ...` marker inside

@@ -18,15 +18,14 @@ executor:
     # govern are pre-approved with --allowedTools; any other tool still gets
     # Claude's prompt, which omnigent routes to the Inbox too.
     permission_mode: default
-    allowed_tools: Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent,mcp__shadcn
-    # >>> shipcrew-mcp: shadcn
+    allowed_tools: Bash,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,LS,TodoWrite,Task,Agent,Skill,BashOutput,KillShell,WebSearch,WebFetch,mcp__omnigent
+    # >>> shipcrew-mcp:
     # GENERATED from agents/_shared/mcp/*.json by scripts/build_agents.py.
     # Only these MCP servers (plus omnigent's relay), never the host user's own.
     strict_mcp_config: true
     # No host-user settings (~/.claude/settings.json: their plugins, hooks,
     # user skills); the bundle's own skills still load (--plugin-dir).
     setting_sources: project,local
-    mcp_config: '{"mcpServers":{"shadcn":{"command":"npx","args":["-y","shadcn@latest","mcp"]}}}'
     # <<< shipcrew-mcp
 
 # ROLE.md + _shared/COMMON.md, rendered by scripts/build_agents.py.
@@ -541,6 +540,11 @@ guardrails:
             # shipcrew_owned_paths (and the workflows guard).
             - "@sed:sed_in_place"
             - "@perl:perl_in_place"
+            # shadcn components through the CLI (the shadcn MCP costs ~265 MB per session
+            # and is not loaded). Exactly `add`, into the configured components folder:
+            # no other cwd or path, no overwrite of an existing component, no `--all`.
+            - "pnpm dlx shadcn@latest add !-c !--cwd* !-p !--path* !-o !--overwrite !-a !--all"
+            - "npx shadcn@latest add !-c !--cwd* !-p !--path* !-o !--overwrite !-a !--all"
             # Foundation only: generators and dependency changes. Changing package.json /
             # the lockfile still needs the Foundation task to own them by name. Installs and
             # adds are the deps group (shared with the builders).
