@@ -90,8 +90,11 @@ watches the board and the sub-agent tree but will usually not answer questions.
   approval): make the `package.json` scripts match it instead (`lint`,
   `typecheck`, `test`, `build`, `e2e`, each run only when defined).
 - Never run `playwright install` or any other large browser/toolchain download.
-  A browser is already installed at `$CHROMIUM_PATH` (default `/usr/bin/chromium`).
-  Playwright must use it: `launchOptions.executablePath: process.env.CHROMIUM_PATH`.
+  A browser is already installed at `$CHROMIUM_PATH` (default `/usr/bin/chromium`;
+  a lighter headless-only build when the machine has one). Playwright must use
+  it: `launchOptions.executablePath: process.env.CHROMIUM_PATH`, always headless
+  (Playwright's default): never `headless: false`, `--headed`, `--ui`, `--debug`
+  or `page.pause()`.
 - Tools are already installed and on PATH. Install dependencies at most once
   per task, and only when `node_modules` is missing (the board seeds a new
   worktree's `node_modules` from the main checkout when the lockfile matches).

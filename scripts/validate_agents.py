@@ -22,7 +22,15 @@ For each ``agents/<bundle>/`` it checks:
    strict MCP config, exactly the expected servers, turned into
    ``--strict-mcp-config`` / ``--mcp-config`` for claude-native and into the
    claude-sdk strict env flag, and ``allowed_tools``' ``mcp__*`` entries match);
-5. the guardrails behave: every function policy is resolved and built through
+5. the headless rendering: every claude-native worker bundle, rendered for
+   claude-sdk exactly as the server does at session creation when
+   ``SHIPCREW_WORKER_HARNESS`` picks sdk for its role
+   (``omnigent.shipcrew.harness.apply_worker_harness``), parses and validates,
+   keeps strict MCP + setting sources in the SDK spawn env, and gives the same
+   verdict as native on every guardrail case, with the tool calls spelled the
+   way the SDK agent makes them (``sys_os_shell`` / ``sys_os_write`` /
+   ``sys_os_edit`` / ``sys_os_read``);
+6. the guardrails behave: every function policy is resolved and built through
    omnigent's factory path, then run on a matrix of tool calls (git push,
    gh pr create, .env reads, workflow edits, playwright install, rm -rf /,
    allowlisted and non-allowlisted shell, writes in and out of the task's
@@ -809,6 +817,85 @@ def _verdict(policies: dict[str, Callable[..., Any]], tool: str, args: dict[str,
     return worst
 
 
+# How the claude-sdk harness spells the native tool calls of the matrix: the
+# OS tools are omnigent's sys_os_* MCP tools (arguments ``command`` / ``path``).
+_SDK_TOOLS = {
+    "Bash": "sys_os_shell",
+    "Write": "sys_os_write",
+    "Edit": "sys_os_edit",
+    "MultiEdit": "sys_os_edit",
+    "Read": "sys_os_read",
+}
+
+
+def _sdk_call(tool: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    """The claude-sdk spelling of a native tool call, or ``None`` (no SDK equivalent)."""
+    name = _SDK_TOOLS.get(tool)
+    if name is None:
+        return None
+    out = {("path" if k == "file_path" else k): v for k, v in args.items()}
+    return name, out
+
+
+def _render_sdk(bundle: Path, dest: Path, owned: list[str] | None) -> AgentSpec:
+    """The bundle as the server uploads it for a claude-sdk worker session."""
+    from omnigent.shipcrew.harness import SDK, apply_worker_harness
+    from omnigent.shipcrew.sessions import inject_task_contract
+
+    copy = materialize_bundle(bundle, dest)
+    config = copy / "config.yaml"
+    text = config.read_text(encoding="utf-8")
+    if owned is not None:
+        text = inject_task_contract(
+            text, owned_paths=owned, root=REPO_PATH, other_tasks=OTHER_TASKS
+        )
+    config.write_text(apply_worker_harness(text, SDK), encoding="utf-8")
+    return parse(copy, expand_env=False)
+
+
+def _check_sdk_rendering(name: str, native: AgentSpec, errors: list[str]) -> int:
+    """A claude-native worker rendered for claude-sdk: valid, isolated, same verdicts."""
+    from omnigent.runtime.workflow import _build_claude_sdk_spawn_env
+
+    if native.executor.config.get("harness") != "claude-native":
+        return 0
+    profile = PROFILE[name]
+    checked = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        rounds = [(TASK_OWNED, CASES), (FOUNDATION_OWNED, CONTRACT_CASES)]
+        for i, (owned, cases) in enumerate(rounds):
+            owned_or_none = owned if profile in COMMITTERS else None
+            spec = _render_sdk(AGENTS / name, Path(tmp) / f"b{i}", owned_or_none)
+            if i == 0:
+                errors += [f"sdk rendering: validate: {e.path}: {e.message}"
+                           for e in validate(spec).errors]  # fmt: skip
+                config = spec.executor.config
+                if config.get("harness") != "claude-sdk" or config.get("permission_mode") != "auto":
+                    errors.append(f"sdk rendering: harness/permission_mode: {config}")
+                if "allowed_tools" in config or "mcp_config" in config:
+                    errors.append("sdk rendering keeps native-only allowed_tools / mcp_config")
+                env = _build_claude_sdk_spawn_env(spec)
+                if env.get("HARNESS_CLAUDE_SDK_STRICT_MCP_CONFIG") != "1":
+                    errors.append("sdk rendering: spawn env lacks the strict MCP flag")
+                if env.get("HARNESS_CLAUDE_SDK_SETTING_SOURCES") != ",".join(SETTING_SOURCES):
+                    errors.append("sdk rendering: spawn env lacks setting sources project,local")
+                if {s.name for s in spec.skills} != BUNDLED_SKILLS.get(name, set()):
+                    errors.append("sdk rendering: bundled skills changed")
+            policies = _build_policies(spec)
+            for label, tool, args, expected in cases:
+                call = _sdk_call(tool, args)
+                if call is None:
+                    continue
+                want = expected.get(profile, expected["*"])
+                got = _verdict(policies, *call)
+                checked += 1
+                if got != want:
+                    errors.append(
+                        f"sdk guardrail {label!r} ({call[0]} {call[1]}): expected {want}, got {got}"
+                    )
+    return checked
+
+
 def _with_task_contract(bundle: Path, owned: list[str] = TASK_OWNED) -> AgentSpec:
     """The bundle as the board starts it: task contract injected by the server code."""
     from omnigent.shipcrew.sessions import inject_task_contract
@@ -1058,6 +1145,7 @@ def main() -> int:
             errors.append("upload round trip changed the instructions")
         _check_conventions(name, spec, errors)
         n_cases = _check_guardrails(name, spec, errors)
+        n_sdk = _check_sdk_rendering(name, spec, errors)
         n_policies = len(spec.guardrails.policies) if spec.guardrails else 0
         if errors:
             failed += 1
@@ -1067,7 +1155,8 @@ def main() -> int:
         else:
             print(
                 f"ok   {name:<11} {spec.executor.config['harness']:<13} "
-                f"{n_policies} policies, {n_cases} guardrail cases, "
+                f"{n_policies} policies, {n_cases} guardrail cases"
+                f"{f' (+{n_sdk} as claude-sdk)' if n_sdk else ''}, "
                 f"{len(spec.skills)} bundled skills, {len(spec.sub_agents)} sub-agents, "
                 f"MCP: {', '.join(sorted(MCP_SERVERS[name])) or 'none'}"
             )
