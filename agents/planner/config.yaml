@@ -230,6 +230,9 @@ guardrails:
             - "paste"
             - "fold"
             - "expand"
+            - "xargs tail"
+            - "xargs file"
+            - "xargs stat"
             # git inspection. No remote writes, no config changes.
             - "git status"
             - "git diff !--output*"
@@ -359,6 +362,9 @@ guardrails:
             - "paste"
             - "fold"
             - "expand"
+            - "xargs tail"
+            - "xargs file"
+            - "xargs stat"
             # git inspection. No remote writes, no config changes.
             - "git status"
             - "git diff !--output*"

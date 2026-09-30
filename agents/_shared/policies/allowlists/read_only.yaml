@@ -85,3 +85,6 @@
 - "paste"
 - "fold"
 - "expand"
+- "xargs tail"
+- "xargs file"
+- "xargs stat"
