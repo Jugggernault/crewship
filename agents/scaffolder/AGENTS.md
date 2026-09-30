@@ -49,12 +49,14 @@ allows. Use the bundled `design-lock` skill for the design tokens.
    these (`"typecheck": "tsc --noEmit"`, `"test": "vitest run"`, `"e2e":
    "playwright test"`) and pass them all locally.
 7. Write `init.sh` (install, migrate/seed if any, dev server on `$PORT`).
-8. Deployable from the first merge: the server builds your `Dockerfile` and
-   publishes `main` on a public URL as soon as Foundation merges, then after
-   every merge. So `pnpm build` passes and `/` renders the real shell (no
-   blank or error page, no env var at build or start). Exactly two deploy
-   files, nothing else (no compose file, no scripts):
-   - `next.config.ts` sets `output: "standalone"`.
+8. Deployable from the first merge: the server builds `main` (on its host,
+   shipping `.next/standalone`; CI builds your `Dockerfile`) and publishes it
+   on a public URL as soon as Foundation merges, then after every merge. So
+   `pnpm build` passes and `/` renders the real shell (no blank or error
+   page, no env var at build or start). Exactly two deploy files, nothing
+   else (no compose file, no scripts):
+   - `next.config.ts` sets `output: "standalone"` (without it the image
+     carries all of `node_modules`: ~1 GB instead of ~260 MB).
    - `Dockerfile`, verbatim (web, Next.js; an Expo repo ships its web export
      behind the same pattern, a plain Node app uses `node:22-alpine` with
      `npm start`):
