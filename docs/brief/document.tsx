@@ -85,7 +85,7 @@ export const Brief = () => (
                 { text: "6 tâches, 6 PR, CI GitHub verte, 6 revues approuvées" },
                 { text: "3 pages construites en parallèle" },
                 { text: "Sécurité : taille des champs limitée (erreur 400) — trou trouvé par la QA aux runs 1-2, prévenu d'office ensuite" },
-                { text: "En ligne : shipcrew-demo-web-4.vercel.app" },
+                { text: "Run 4 sur Vercel ; run 5 en conteneur, URL publique trycloudflare.com sans clé ni compte" },
               ]}
             />
           </Stack>
@@ -101,7 +101,7 @@ export const Brief = () => (
       <Section spacing="none">
         <Heading level={2} noMargin>Ce qui est en place</Heading>
         <Stack direction="horizontal" gap="md">
-          <PdfImage src={img("drawer")} width={170} variant="bordered" caption="Une tâche : PR, CI, revue, arbre des agents" />
+          <PdfImage src={img("drawer")} width={140} variant="bordered" caption="Une tâche : PR, CI, revue, arbre des agents" />
           <Stack gap="xs" style={{ flex: 1 }}>
             <PdfList
               variant="bullet"
@@ -120,14 +120,14 @@ export const Brief = () => (
         </Stack>
 
         <Heading level={3}>Sans Vercel : conteneur + URL publique, sans clé</Heading>
-        <PdfImage src={img("live")} width={330} variant="bordered" caption="URL live affichée dès le premier déploiement, mise à jour à chaque merge." />
+        <PdfImage src={img("live")} width={280} variant="bordered" caption="URL live affichée dès le premier déploiement, mise à jour à chaque merge." />
         <PdfList
           variant="bullet"
           gap="xs"
           items={[
             { text: "Image Docker minimale (~60 Mo compressée, ~40 Mo de RAM au repos), relancée sans coupure" },
             { text: "URL publique via tunnel Cloudflare (poste local) ou <app>.<ip>.sslip.io + HTTPS (VPS)" },
-            { text: "Option VPS : ArgoCD synchronise l'app et crée une preview par PR (prouvé sur un cluster local)" },
+            { text: "Option VPS : ArgoCD, une preview par PR (prouvé sur un cluster local ; VPS réel à tester)" },
           ]}
         />
 
@@ -146,12 +146,10 @@ export const Brief = () => (
             <Row cells={["2", "59 min", "~14", "6,48 $"]} />
             <Row cells={["3", "41 min", "14", "7,06 $"]} />
             <Row cells={["4", "36 min", "3", "6,41 $"]} />
+            <Row cells={["5 (Docker, sans Vercel)", "n/d*", "1", "4,64 $"]} />
           </TableBody>
         </Table>
-        <Text variant="xs" color="mutedForeground">
-          En cours : build de l'image sur la machine (sans réseau dans Docker) et test de l'installation sur un vrai VPS.
-          Coûts = quota de l'abonnement Claude.
-        </Text>
+        <Text variant="xs" color="mutedForeground">* Run 5 coupé par des correctifs du déploiement. Coûts = quota Claude.</Text>
         <Footer />
       </Section>
     </Page>
