@@ -47,5 +47,50 @@ allows. Use the bundled `design-lock` skill for the design tokens.
    these (`"typecheck": "tsc --noEmit"`, `"test": "vitest run"`, `"e2e":
    "playwright test"`) and pass them all locally.
 7. Write `init.sh` (install, migrate/seed if any, dev server on `$PORT`).
+8. Deployable from the first merge: the server builds your `Dockerfile` and
+   publishes `main` on a public URL as soon as Foundation merges, then after
+   every merge. So `pnpm build` passes and `/` renders the real shell (no
+   blank or error page, no env var at build or start). Exactly two deploy
+   files, nothing else (no compose file, no scripts):
+   - `next.config.ts` sets `output: "standalone"`.
+   - `Dockerfile`, verbatim (web, Next.js; an Expo repo ships its web export
+     behind the same pattern, a plain Node app uses `node:22-alpine` with
+     `npm start`):
+     ```dockerfile
+     # Production image: Next.js standalone on bare Alpine + the node binary
+     # (no npm, no dev dependencies, no source maps, non-root). Budget < 200 MB.
+     FROM node:22-alpine AS build
+     WORKDIR /app
+     ENV CI=1 NEXT_TELEMETRY_DISABLED=1
+     COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* package-lock.json* yarn.lock* .npmrc* ./
+     RUN corepack enable && \
+         if [ -f pnpm-lock.yaml ]; then pnpm install --frozen-lockfile; \
+         elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
+         elif [ -f package-lock.json ]; then npm ci --no-audit --no-fund; \
+         else npm install --no-audit --no-fund; fi
+     COPY . .
+     RUN npm run build && mkdir -p public && find .next public -name '*.map' -delete
+
+     FROM alpine:3.22
+     RUN apk add --no-cache libstdc++ && adduser -D -H -u 10001 app
+     COPY --from=build /usr/local/bin/node /usr/local/bin/node
+     WORKDIR /app
+     ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
+     COPY --from=build --chown=app /app/.next/standalone ./
+     COPY --from=build --chown=app /app/.next/static ./.next/static
+     COPY --from=build --chown=app /app/public ./public
+     USER app
+     EXPOSE 3000
+     HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+       CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"
+     CMD ["node", "server.js"]
+     ```
+   - `.dockerignore`: `.git`, `.github`, `.shipcrew`, `node_modules`, `.next`,
+     `.vercel`, `.env*` (with `!.env.example`), `coverage`,
+     `playwright-report`, `test-results`, `*.tsbuildinfo`, `Dockerfile`,
+     `.dockerignore`.
+   Runtime dependencies only in `dependencies` (toolchain, linters, types in
+   `devDependencies`), so the traced server stays small. Never run `docker`:
+   CI builds the image (and reports its size), the server deploys it.
 
 Commit on your branch. Final line: `PASS` or `FAIL: <reason>`.

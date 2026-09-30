@@ -27,6 +27,14 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - name: e2e (production build)
         run: if [ -f playwright.config.ts ]; then npx playwright test; fi
+      # The production image the docker deploy target builds (size warns over 200 MB).
+      - name: docker build
+        if: hashFiles('Dockerfile') != ''
+        run: |
+          docker build --quiet --tag app:ci .
+          mb=$(( $(docker image inspect --format '{{.Size}}' app:ci) / 1000000 ))
+          echo "**Production image:** ${mb} MB" >> "$GITHUB_STEP_SUMMARY"
+          [ "$mb" -le "${{ vars.SHIPCREW_IMAGE_BUDGET_MB || '200' }}" ] || echo "::warning::image ${mb} MB over budget"
       - uses: actions/upload-artifact@v4
         if: failure()
         with: { name: playwright-report, path: playwright-report, retention-days: 7 }

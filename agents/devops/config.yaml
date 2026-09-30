@@ -1,7 +1,7 @@
 spec_version: 1
 name: devops
 description: >-
-  shipcrew release engineer: ships a merged mission (vercel link + vercel deploy --prod from a fresh worktree of main, final line DEPLOYED: <url>); changes no code.
+  shipcrew release engineer for agent deploy targets only (SHIPCREW_DEPLOY_TARGET=vercel): ships a merged mission (vercel link + vercel deploy --prod from a fresh worktree of main, final line DEPLOYED: <url>); changes no code. The docker target deploys server-side, without it.
 
 # Code-writing / tool-heavy role: the real Claude Code CLI (claude-native), so
 # the human can open its terminal from the board and take over, with only its

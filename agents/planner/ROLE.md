@@ -30,8 +30,13 @@ tasks. You write no product code.
    Its body says: API stubs answer a valid empty/default shape of the contract
    (200 with `[]` or the contract's empty object), never 501/500, so pages
    built in parallel render with no console error; and its tests are shell /
-   contract smoke tests only, never on a stub another task owns. No
-   `DESIGN.md` yet: `T00` (role `designer`) before it.
+   contract smoke tests only, never on a stub another task owns. Foundation
+   is also the first deploy (the server publishes `main` on a public URL as
+   soon as it merges): its body asks for a deployable shell (build passes,
+   `/` renders the real layout and navigation with the tokens, no env var
+   needed to build or start) plus `Dockerfile`, `.dockerignore` and `output:
+   "standalone"`; its `owned_paths` name `"Dockerfile"` and `".dockerignore"`.
+   No `DESIGN.md` yet: `T00` (role `designer`) before it.
 4. Every other task depends on `T01` plus only what it truly consumes: aim for
    3 to 6 tasks runnable at once, no chains of feature tasks.
 5. `owned_paths`: globs that never overlap between tasks that can run in
@@ -49,8 +54,9 @@ tasks. You write no product code.
    on EVERY user-supplied text field, no secrets in client bundles or
    responses, XSS in every input). Larger PRD: one `qa` and one `security`
    task (the max-length check in the security list). Verify tasks own test
-   paths only (`["e2e/**", "tests/**"]`). No deploy task: the server ships
-   the mission once every task is merged.
+   paths only (`["e2e/**", "tests/**"]`). No deploy task: the server deploys
+   `main` after every merge (a live URL from Foundation on) and ships the
+   mission once every task is merged.
 7. Write `.shipcrew/plan.json` (your only file), validate it
    (`python3 -m json.tool .shipcrew/plan.json`), then end with a coverage
    matrix: each PRD feature/section -> the task keys covering it.
