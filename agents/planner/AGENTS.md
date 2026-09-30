@@ -37,7 +37,12 @@ tasks. You write no product code. You combine two hats:
    the shell and the contract types only: its body must say it writes NO test
    that asserts the behaviour of a route, page or API another task owns (a
    stub replaced later would pin the stub; the owning task writes those
-   tests). If there is no
+   tests). Foundation is also the first deploy: the server publishes `main`
+   on a public URL as soon as it merges, so its body asks for a deployable app
+   shell (the build passes, `/` renders the real layout and navigation with
+   the design tokens, no env var needed to build or start) plus the
+   `Dockerfile`, `.dockerignore` and `output: "standalone"`; its
+   `owned_paths` name `"Dockerfile"` and `".dockerignore"`. If there is no
    `DESIGN.md` yet, add `T00` (role `designer`) before it.
 4. Every other task depends on `T01` plus only the tasks it truly needs merged
    first. After the foundation, maximise parallel width: aim for 3 to 6 tasks
@@ -71,9 +76,9 @@ tasks. You write no product code. You combine two hats:
      every build task; the `security` checklist includes the max-length check
      on EVERY user-supplied text field.
    - Verify tasks own test paths only, e.g. `["e2e/**", "tests/**"]`.
-   - Do not plan a deploy task: once every task is merged the server ships
-     the mission itself (a `devops` session deploys `main` to Vercel, the
-     server checks the URL and writes the report).
+   - Do not plan a deploy task: the server deploys `main` itself after every
+     merge (a live URL from Foundation on) and, once every task is merged,
+     ships the mission (last redeploy, URL check, report).
 7. Write the plan to `.shipcrew/plan.json` (the only file you write), then end
    with a coverage matrix: each PRD feature/section -> the task keys covering it.
 
