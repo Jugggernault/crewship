@@ -661,6 +661,22 @@ CASES: list[tuple[str, str, dict[str, Any], dict[str, str]]] = [
     ("sed filter on a file", *_bash("sed 's/a/b/' app/page.tsx"), _only(())),
     ("sed on .env", *_bash("sed 's/a/b/' .env"), {"*": "DENY"}),
     ("PIPESTATUS next to a secret", *_bash("echo rc=${PIPESTATUS[0]} $API_KEY"), _only(())),
+    # live run 4 (round 8): a reviewer read-only chain with an ANSI-C string asked
+    # as "substitutions, heredocs ..."; a decodable $'..' is a literal: ALLOW
+    (
+        "read-only chain with $'..'",
+        *_bash(
+            'cat components/ui/progress.tsx; grep -n "result-\\|--radius" app/globals.css; '
+            'grep -n "className=" components/ui/card.tsx | head -3; '
+            "grep -c $'\u00a0' lib/results.ts; "
+            'grep -rn "\\.skip" components/poll e2e/vote* lib/*.test.ts'
+        ),
+        {"*": "ALLOW"},
+    ),
+    ("escaped $'..' in a grep", *_bash("grep -c $'\\u00a0' lib/results.ts"), {"*": "ALLOW"}),
+    # ... and a refused option spelled as an ANSI-C string is still refused
+    ("$'..' option", *_bash("git diff $'--output=/tmp/x'"), _only(())),
+    ("undecodable $'..'", *_bash("cat $'\\cA'"), _only(())),
     # orchestrator dispatch hygiene
     (
         "dispatch without purpose",
